@@ -197,11 +197,15 @@ class State(TypedDict):
 
 ## Agent System Prompts
 
+---
+
 ### Coordinator Agent
 
-**Purpose**: Classify the problem type and explain the reasoning.
+**Purpose**: Classify the problem type and explain the reasoning transparently to the user.
 
 **Location**: `src/pm_agents/coordinator.py`
+
+#### System Prompt
 
 ```
 You are a PM coach coordinator. Your job is to:
@@ -220,18 +224,83 @@ CLASSIFICATION: [prioritization or discovery]
 REASONING: [2-3 sentences explaining why]
 ```
 
-**Output Parsing**:
-- Looks for `CLASSIFICATION:` line to extract type
-- Looks for `REASONING:` line to extract explanation
-- Defaults to "discovery" if parsing fails
+#### Classification Logic
+
+The coordinator distinguishes between two problem types based on signal patterns:
+
+| Classification | Signal Words/Patterns | Core Question |
+|----------------|----------------------|---------------|
+| **Prioritization** | "decide", "choose", "rank", "prioritize", "trade-off", "limited resources", "what to build first", "which one", "compare" | "What should we do?" |
+| **Discovery** | "understand", "discover", "research", "map", "identify", "surface", "learn", "explore", "new to", "unfamiliar" | "What do we need to know?" |
+
+#### Detailed Classification Criteria
+
+**Route to Prioritization when:**
+- User has multiple concrete options and needs to choose or rank them
+- Resource constraints (time, money, people) force trade-offs
+- Stakeholders disagree on what to do first
+- User needs a structured framework to justify a decision
+- The options are known, but the decision criteria are unclear
+
+**Route to Discovery when:**
+- User needs to understand a problem space before making decisions
+- User is exploring stakeholders, constraints, or unknowns
+- User is new to a domain and needs to map it
+- The problem itself is unclear or poorly defined
+- User needs to surface hidden information or assumptions
+
+#### Example Classifications
+
+| User Input | Classification | Reasoning |
+|------------|----------------|-----------|
+| "We have Feature A, B, and C. Limited eng time. What should we build?" | prioritization | Multiple options, resource constraint, needs ranking |
+| "I'm new to the payments domain. What should I learn first?" | discovery | New domain, needs to understand before deciding |
+| "Should we build for enterprise or SMB first?" | prioritization | Two options, needs trade-off analysis |
+| "Who are the stakeholders for our checkout flow?" | discovery | Mapping stakeholders, surfacing information |
+| "CEO wants X, customer wants Y, data shows Z. Help me decide." | prioritization | Multiple competing options, needs framework |
+| "What questions should I ask in user interviews?" | discovery | Research phase, generating investigation questions |
+
+#### Response Parsing
+
+The coordinator's response is parsed using simple string matching:
+
+```python
+def parse_response(response_text: str) -> tuple[str, str]:
+    classification = "discovery"  # default fallback
+    reasoning = ""
+
+    lines = response_text.strip().split("\n")
+    for line in lines:
+        if line.upper().startswith("CLASSIFICATION:"):
+            value = line.split(":", 1)[1].strip().lower()
+            if "prioritization" in value:
+                classification = "prioritization"
+            else:
+                classification = "discovery"
+        elif line.upper().startswith("REASONING:"):
+            reasoning = line.split(":", 1)[1].strip()
+
+    # Handle multi-line reasoning
+    if not reasoning:
+        for i, line in enumerate(lines):
+            if line.upper().startswith("REASONING:"):
+                reasoning = " ".join(lines[i:]).replace("REASONING:", "").strip()
+                break
+
+    return classification, reasoning
+```
+
+**Why "discovery" is the default**: If parsing fails or the classification is ambiguous, discovery is safer—it encourages exploration before commitment, whereas jumping to prioritization with incomplete information can lead to poor decisions.
 
 ---
 
 ### Prioritization Agent
 
-**Purpose**: Help users make trade-off decisions using structured frameworks.
+**Purpose**: Help users make trade-off decisions using structured frameworks, producing actionable recommendations with clear reasoning.
 
 **Location**: `src/pm_agents/agents/prioritization.py`
+
+#### System Prompt
 
 ```
 You are a senior PM helping with prioritization decisions.
@@ -251,26 +320,146 @@ If you need more information to score accurately, state your assumptions
 explicitly rather than asking questions.
 ```
 
-**Frameworks Available**:
-- **RICE**: Reach, Impact, Confidence, Effort
-- **MoSCoW**: Must have, Should have, Could have, Won't have
-- **Value vs Effort**: 2x2 matrix prioritization
-- **Weighted Scoring**: Custom criteria with weights
+#### Available Frameworks
 
-**Expected Output Structure**:
-1. Context restatement (1-2 sentences)
-2. Framework selection with justification
-3. Markdown table with analysis
-4. Clear recommendation
-5. Assumptions and validation needs
+##### 1. RICE Framework
+**Best for**: Comparing features or initiatives when you have rough data on reach and effort.
+
+| Component | Description | Scale |
+|-----------|-------------|-------|
+| **Reach** | How many users/customers will this affect in a given time period? | Number (e.g., 1000 users/quarter) |
+| **Impact** | How much will this affect each user? | 0.25 (minimal) to 3 (massive) |
+| **Confidence** | How sure are you about these estimates? | 0-100% |
+| **Effort** | How many person-months will this take? | Number (e.g., 2 person-months) |
+
+**Formula**: `RICE Score = (Reach × Impact × Confidence) / Effort`
+
+**Example Table Output**:
+```markdown
+| Feature | Reach | Impact | Confidence | Effort | RICE Score |
+|---------|-------|--------|------------|--------|------------|
+| Feature A | 5000 | 2 | 80% | 3 | 2,667 |
+| Feature B | 2000 | 3 | 90% | 2 | 2,700 |
+| Feature C | 10000 | 1 | 70% | 4 | 1,750 |
+```
+
+##### 2. MoSCoW Method
+**Best for**: Release planning, MVP scoping, or when stakeholders need to agree on what's essential vs. nice-to-have.
+
+| Category | Definition | Implication |
+|----------|------------|-------------|
+| **Must Have** | Non-negotiable for launch | Without these, the product fails |
+| **Should Have** | Important but not critical | Can launch without, but should add soon |
+| **Could Have** | Nice to have | Only if time/resources permit |
+| **Won't Have** | Explicitly out of scope | Deferred to future releases |
+
+**Example Table Output**:
+```markdown
+| Feature | Category | Rationale |
+|---------|----------|-----------|
+| User authentication | Must Have | Legal/security requirement |
+| Password reset | Must Have | Basic usability expectation |
+| Social login | Should Have | Reduces friction but not blocking |
+| Dark mode | Could Have | User request but low impact |
+| AI recommendations | Won't Have | Requires ML infrastructure we don't have |
+```
+
+##### 3. Value vs. Effort Matrix
+**Best for**: Quick visual prioritization, especially in workshops or when explaining to non-technical stakeholders.
+
+```
+                    HIGH VALUE
+                        │
+     ┌──────────────────┼──────────────────┐
+     │                  │                  │
+     │   Quick Wins     │   Big Bets       │
+     │   (Do First)     │   (Plan These)   │
+     │                  │                  │
+LOW ─┼──────────────────┼──────────────────┼─ HIGH
+EFFORT                  │                  EFFORT
+     │                  │                  │
+     │   Fill-Ins       │   Money Pits     │
+     │   (Do If Time)   │   (Avoid)        │
+     │                  │                  │
+     └──────────────────┼──────────────────┘
+                        │
+                    LOW VALUE
+```
+
+**Example Table Output**:
+```markdown
+| Feature | Value | Effort | Quadrant |
+|---------|-------|--------|----------|
+| Feature A | High | Low | Quick Win ✅ |
+| Feature B | High | High | Big Bet |
+| Feature C | Low | Low | Fill-In |
+| Feature D | Low | High | Money Pit ❌ |
+```
+
+##### 4. Weighted Scoring
+**Best for**: Complex decisions with multiple criteria, or when you need to make the decision-making process transparent and auditable.
+
+**Process**:
+1. Define criteria (e.g., revenue impact, user satisfaction, strategic alignment)
+2. Assign weights to each criterion (must sum to 100%)
+3. Score each option on each criterion (typically 1-5 or 1-10)
+4. Calculate weighted score
+
+**Example Table Output**:
+```markdown
+| Criteria | Weight | Feature A | Feature B | Feature C |
+|----------|--------|-----------|-----------|-----------|
+| Revenue Impact | 30% | 4 | 3 | 5 |
+| User Satisfaction | 25% | 5 | 4 | 3 |
+| Strategic Fit | 25% | 3 | 5 | 4 |
+| Eng Complexity | 20% | 4 | 2 | 3 |
+| **Weighted Score** | | **4.0** | **3.6** | **3.9** |
+```
+
+#### Framework Selection Guide
+
+| Situation | Recommended Framework | Why |
+|-----------|----------------------|-----|
+| Comparing 3+ features with some usage data | RICE | Quantitative, handles uncertainty |
+| Scoping an MVP or release | MoSCoW | Clear categories, stakeholder alignment |
+| Quick workshop prioritization | Value vs Effort | Visual, fast, intuitive |
+| Executive decision with multiple criteria | Weighted Scoring | Transparent, auditable |
+| Stakeholder conflict on priorities | Weighted Scoring | Makes criteria explicit, reduces politics |
+
+#### Expected Output Structure
+
+1. **Context Restatement** (1-2 sentences)
+   - Shows understanding of the specific situation
+   - Identifies the core trade-off
+
+2. **Framework Selection** (1 paragraph)
+   - Which framework and why it fits this situation
+   - Acknowledges limitations if any
+
+3. **Analysis Table** (Markdown)
+   - Framework-appropriate columns
+   - Scores/ratings for each option
+   - Final ranking or categorization
+
+4. **Recommendation** (1-2 paragraphs)
+   - Clear "do this" statement
+   - Reasoning that connects to the analysis
+   - Sequencing if multiple items
+
+5. **Assumptions & Validation** (Bullet list)
+   - What was assumed to make the analysis
+   - What the user should validate before acting
+   - Risks if assumptions are wrong
 
 ---
 
 ### Discovery Agent
 
-**Purpose**: Help users explore and map unfamiliar problem spaces.
+**Purpose**: Help users explore and map unfamiliar problem spaces, generating specific investigation questions and a structured approach to learning.
 
 **Location**: `src/pm_agents/agents/discovery.py`
+
+#### System Prompt
 
 ```
 You are a senior PM helping with discovery and research.
@@ -289,19 +478,141 @@ Assume they're smart but new to this specific problem. Give them a roadmap,
 not a lecture.
 ```
 
-**Discovery Dimensions** (examples):
-- Stakeholder landscape
-- Technical constraints
-- Business context
-- User needs
-- Competitive landscape
+#### Discovery Dimensions
 
-**Expected Output Structure**:
-1. Problem framing (underlying question)
-2. 3-5 discovery dimensions
-3. 5-10 specific investigation questions
-4. Recommended sequence with reasoning
-5. Blindspot warnings
+The agent identifies 3-5 dimensions relevant to the user's specific situation. Common dimensions include:
+
+| Dimension | What It Covers | Example Questions |
+|-----------|---------------|-------------------|
+| **Stakeholder Landscape** | Who has power, interest, or influence | "Who can block this?" "Who benefits?" |
+| **User Needs** | What users actually want vs. what they say | "What job are they hiring this for?" |
+| **Technical Constraints** | What's possible, what's hard, what's impossible | "What are the system dependencies?" |
+| **Business Context** | Revenue model, metrics, strategic priorities | "How does this align with company goals?" |
+| **Competitive Landscape** | What alternatives exist, what's table stakes | "What do competitors do here?" |
+| **Regulatory/Legal** | Compliance requirements, legal constraints | "What regulations apply?" |
+| **Historical Context** | What's been tried before, why it failed/succeeded | "Has this been attempted before?" |
+| **Organizational Dynamics** | Politics, culture, decision-making patterns | "Who needs to approve this?" |
+
+#### Question Generation Approach
+
+The agent generates 5-10 **specific, concrete questions** rather than generic prompts. Good discovery questions are:
+
+| Quality | Bad Example | Good Example |
+|---------|-------------|--------------|
+| Specific | "What do users want?" | "What's the #1 complaint from users who churned in the last 90 days?" |
+| Actionable | "Research the market" | "Which 3 competitors should I demo this week?" |
+| Falsifiable | "Is this a good idea?" | "What would make us kill this project?" |
+| Concrete | "Talk to stakeholders" | "What does [specific person] need to say yes?" |
+
+#### Discovery Sequence Logic
+
+The agent recommends an order for investigation based on:
+
+1. **Dependencies**: Some information unlocks other questions
+2. **Risk Reduction**: Address highest-uncertainty items first
+3. **Stakeholder Access**: Some people are harder to reach
+4. **Time Sensitivity**: Some information has expiration dates
+
+**Typical Sequence Pattern**:
+```
+Week 1: Foundational Understanding
+├── Internal docs and past decisions
+├── Key stakeholder 1:1s
+└── Competitive landscape scan
+
+Week 2: User/Customer Deep Dive
+├── User interviews or data analysis
+├── Support ticket review
+└── Sales/CS team insights
+
+Week 3: Synthesis & Validation
+├── Cross-reference findings
+├── Identify contradictions
+└── Validate assumptions with experts
+```
+
+#### Common Blindspots
+
+The agent warns about blindspots based on the type of discovery:
+
+| Discovery Type | Common Blindspots |
+|----------------|-------------------|
+| **New Domain** | Assuming vocabulary means the same thing; missing tribal knowledge |
+| **User Research** | Confirmation bias; talking to fans not churned users |
+| **Technical Discovery** | Underestimating dependencies; ignoring tech debt |
+| **Stakeholder Mapping** | Missing informal influencers; assuming org chart = power |
+| **Competitive Analysis** | Focusing only on features; missing business model differences |
+| **Problem Definition** | Solving symptoms not causes; accepting problem framing uncritically |
+
+#### Expected Output Structure
+
+1. **Problem Framing** (1-2 paragraphs)
+   - The underlying question the user is trying to answer
+   - Why this framing matters
+   - What success looks like
+
+2. **Discovery Dimensions** (3-5 items)
+   - Each dimension named and explained
+   - Why it's relevant to this specific situation
+   - What kind of information lives here
+
+3. **Specific Questions** (5-10 items)
+   - Numbered, concrete, actionable
+   - Grouped by dimension or theme
+   - Includes who to ask or where to look
+
+4. **Recommended Sequence** (Ordered list or timeline)
+   - What to investigate first and why
+   - Dependencies between questions
+   - Suggested timeline if appropriate
+
+5. **Blindspot Warnings** (Bullet list)
+   - What's easy to miss in this type of discovery
+   - Cognitive biases to watch for
+   - Questions the user might not think to ask
+
+#### Example Output Excerpt
+
+```markdown
+## Problem Framing
+
+You're trying to understand the "Total Category Optimization" domain well enough
+to have credible conversations with stakeholders in 2 weeks. The underlying
+question isn't "what is TCO?" but "what do I need to know to be useful in my
+first stakeholder meeting?"
+
+## Discovery Dimensions
+
+### 1. Domain Vocabulary & Mental Models
+The TCO space likely has specific terminology that insiders use...
+
+### 2. Stakeholder Landscape
+Before the meeting, you need to know who will be in the room...
+
+## Specific Questions to Investigate
+
+1. **What are the 5 key metrics that define success in TCO?** (Ask: your manager,
+   look: internal dashboards)
+2. **Who are the 3 most influential stakeholders and what do they care about?**
+   (Ask: your skip-level, look: recent decision docs)
+3. ...
+
+## Recommended Sequence
+
+**Days 1-3**: Foundation
+- Read the last 3 quarterly reviews mentioning TCO
+- Schedule 1:1s with your manager and one domain expert
+
+**Days 4-7**: Stakeholder mapping
+...
+
+## Blindspot Warnings
+
+- ⚠️ **Vocabulary trap**: Words like "optimization" may mean something specific
+  in this domain. Don't assume.
+- ⚠️ **Past failures**: Ask "what's been tried before?" early—there may be
+  political landmines.
+```
 
 ---
 
