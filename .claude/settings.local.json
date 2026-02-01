@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv init:*)",
+      "Bash(uv add:*)",
+      "Bash(curl:*)",
+      "Bash(sh)",
+      "Bash(~/.local/bin/uv init -q)",
+      "Bash(~/.local/bin/uv add:*)"
+    ]
+  }
+}
