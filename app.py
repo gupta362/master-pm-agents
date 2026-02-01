@@ -5,7 +5,7 @@ Run with: uv run streamlit run app.py
 """
 
 import streamlit as st
-from main import run_streaming
+from pm_agents import run_streaming
 
 st.title("PM Brainstorming Assistant")
 st.caption("Ask me about prioritization decisions or discovery challenges")

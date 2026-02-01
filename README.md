@@ -41,7 +41,7 @@ The **Coordinator** explains its reasoning, so you understand why it chose a par
 git clone https://github.com/gupta362/master-pm-agents.git
 cd master-pm-agents
 
-# Install dependencies
+# Install dependencies and package
 uv sync
 
 # Create .env file with your API key
@@ -50,7 +50,7 @@ echo "ANTHROPIC_API_KEY=your-key-here" > .env
 
 ## How to Run
 
-### Option 1: Streamlit UI (Recommended)
+### Streamlit UI (Recommended)
 
 ```bash
 uv run streamlit run app.py
@@ -58,13 +58,21 @@ uv run streamlit run app.py
 
 Then open http://localhost:8501 in your browser.
 
-### Option 2: Command Line
+### Python API
 
-```bash
-uv run python main.py
+```python
+from pm_agents import run, run_streaming
+
+# Run with full response
+result = run("Help me prioritize these three features...")
+
+# Run with streaming (for UIs)
+for event_type, data in run_streaming("Help me prioritize..."):
+    if event_type == "coordinator":
+        print(f"Classification: {data['classification']}")
+    elif event_type == "token":
+        print(data, end="")
 ```
-
-This runs the built-in test cases and prints everything to the terminal.
 
 ## Example Usage
 
@@ -91,14 +99,20 @@ The system will:
 
 ```
 master-pm-agents/
-├── main.py            # Coordinator + LangGraph workflow + streaming
-├── prioritization.py  # Prioritization agent (RICE, MoSCoW, etc.)
-├── discovery.py       # Discovery agent (questions, sequence, blindspots)
-├── app.py             # Streamlit chat UI
-├── spec.md            # Detailed agent specifications
-├── CLAUDE.md          # Code style preferences
-├── pyproject.toml     # Dependencies (managed by uv)
-└── .env               # Your ANTHROPIC_API_KEY
+├── src/
+│   └── pm_agents/
+│       ├── __init__.py         # Public API exports
+│       ├── workflow.py         # LangGraph orchestration
+│       ├── coordinator.py      # Problem classification
+│       ├── state.py            # State definitions
+│       └── agents/
+│           ├── __init__.py
+│           ├── prioritization.py
+│           └── discovery.py
+├── app.py                      # Streamlit chat UI
+├── pyproject.toml              # Package config
+├── spec.md                     # Detailed specifications
+└── .env                        # Your ANTHROPIC_API_KEY
 ```
 
 ## Tech Stack
@@ -107,3 +121,4 @@ master-pm-agents/
 - **LangChain + Anthropic** - LLM calls to Claude
 - **Streamlit** - Chat UI with streaming support
 - **uv** - Fast Python package manager
+- **Hatch** - Python build backend
