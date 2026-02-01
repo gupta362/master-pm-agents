@@ -10,6 +10,10 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
 
+# Import specialist agents
+import prioritization
+import discovery
+
 # Initialize the LLM - using Claude
 # Regular LLM for coordinator (no streaming needed)
 llm = ChatAnthropic(model="claude-sonnet-4-20250514")
@@ -112,79 +116,20 @@ def route_to_specialist(state: State) -> str:
 
 
 # --------------------
-# PRIORITIZATION AGENT NODE
+# SPECIALIST AGENT NODES
 # --------------------
-# Helps with trade-off decisions using frameworks like RICE, MoSCoW, etc.
-
-PRIORITIZATION_PROMPT = """You are a senior PM helping with prioritization decisions.
-
-When given a problem:
-1. Restate the core trade-off in 1-2 sentences
-2. Select the most appropriate framework (RICE, MoSCoW, Value vs Effort, or weighted scoring) and explain why
-3. Apply the framework with a markdown table
-4. Give a clear recommendation with reasoning
-5. Note your assumptions and what you'd validate
-
-Be specific to their situation. Don't give generic framework explanations—apply it to their actual problem.
-
-If you need more information to score accurately, state your assumptions explicitly rather than asking questions."""
+# These wrap the imported agent modules for use in LangGraph
 
 def prioritization_agent_node(state: State) -> State:
     """Help user with prioritization using structured frameworks."""
-    print("\n" + "="*50)
-    print("PRIORITIZATION AGENT")
-    print("="*50)
+    output = prioritization.run_agent(state["user_input"], llm)
+    return {**state, "agent_output": output}
 
-    messages = [
-        {"role": "system", "content": PRIORITIZATION_PROMPT},
-        {"role": "user", "content": state["user_input"]}
-    ]
-    response = llm.invoke(messages)
-
-    print(f"\nAgent output:\n{response.content[:500]}...")
-
-    return {
-        **state,
-        "agent_output": response.content
-    }
-
-
-# --------------------
-# DISCOVERY AGENT NODE
-# --------------------
-# Helps explore and map problem spaces, stakeholders, and hidden constraints
-
-DISCOVERY_PROMPT = """You are a senior PM helping with discovery and research.
-
-When given a problem:
-1. Frame what the user is actually trying to discover (the underlying question)
-2. Identify 3-5 discovery dimensions relevant to their situation
-3. Generate 5-10 specific, concrete questions they should investigate
-4. Recommend a sequence for discovery with reasoning
-5. Warn about common blindspots for this type of discovery
-
-Be specific to their situation. Don't give generic discovery advice—tailor to their actual domain and context.
-
-Assume they're smart but new to this specific problem. Give them a roadmap, not a lecture."""
 
 def discovery_agent_node(state: State) -> State:
     """Help user with discovery and research."""
-    print("\n" + "="*50)
-    print("DISCOVERY AGENT")
-    print("="*50)
-
-    messages = [
-        {"role": "system", "content": DISCOVERY_PROMPT},
-        {"role": "user", "content": state["user_input"]}
-    ]
-    response = llm.invoke(messages)
-
-    print(f"\nAgent output:\n{response.content[:500]}...")
-
-    return {
-        **state,
-        "agent_output": response.content
-    }
+    output = discovery.run_agent(state["user_input"], llm)
+    return {**state, "agent_output": output}
 
 
 # --------------------
@@ -324,33 +269,16 @@ def run_streaming(user_input: str):
     yield ("coordinator", {"classification": classification, "reasoning": reasoning})
 
     # Step 2: Stream specialist agent response
-    if classification == "prioritization":
-        print("\n" + "="*50)
-        print("PRIORITIZATION AGENT (STREAMING)")
-        print("="*50)
-        system_prompt = PRIORITIZATION_PROMPT
-    else:
-        print("\n" + "="*50)
-        print("DISCOVERY AGENT (STREAMING)")
-        print("="*50)
-        system_prompt = DISCOVERY_PROMPT
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_input}
-    ]
-
-    # Stream the response token by token
     full_output = ""
-    for chunk in llm_streaming.stream(messages):
-        # chunk.content contains the token text
-        token = chunk.content
-        if token:
+    if classification == "prioritization":
+        for token in prioritization.stream_agent(user_input, llm_streaming):
             full_output += token
-            print(token, end="", flush=True)  # Print to terminal
+            yield ("token", token)
+    else:
+        for token in discovery.stream_agent(user_input, llm_streaming):
+            full_output += token
             yield ("token", token)
 
-    print()  # Newline after streaming completes
     print("\n" + "="*50)
     print("STREAMING COMPLETE")
     print("="*50)

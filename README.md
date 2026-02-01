@@ -91,12 +91,14 @@ The system will:
 
 ```
 master-pm-agents/
-├── main.py          # Core LangGraph workflow + streaming function
-├── app.py           # Streamlit chat UI
-├── spec.md          # Detailed agent specifications
-├── CLAUDE.md        # Code style preferences
-├── pyproject.toml   # Dependencies (managed by uv)
-└── .env             # Your ANTHROPIC_API_KEY
+├── main.py            # Coordinator + LangGraph workflow + streaming
+├── prioritization.py  # Prioritization agent (RICE, MoSCoW, etc.)
+├── discovery.py       # Discovery agent (questions, sequence, blindspots)
+├── app.py             # Streamlit chat UI
+├── spec.md            # Detailed agent specifications
+├── CLAUDE.md          # Code style preferences
+├── pyproject.toml     # Dependencies (managed by uv)
+└── .env               # Your ANTHROPIC_API_KEY
 ```
 
 ## Tech Stack
