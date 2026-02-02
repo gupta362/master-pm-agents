@@ -4,26 +4,38 @@ A multi-agent system that helps Product Managers think through problems using AI
 
 ## What This Does
 
-As a PM, you face two fundamentally different types of challenges:
+As a PM, you face different types of challenges that require different thinking approaches:
 
-1. **Prioritization problems** - You have multiple options and need to decide what to build first. Stakeholders disagree, resources are limited, and you need a structured way to make trade-offs.
-
-2. **Discovery problems** - You're exploring unfamiliar territory. You need to map stakeholders, surface hidden constraints, and figure out what questions to even ask.
+| Category | When to Use | Example |
+|----------|-------------|---------|
+| **Prioritization** | Choosing between options, ranking, trade-offs | "Should we build A or B first?" |
+| **Problem Space** | Validating if a problem exists and matters | "I think users struggle with X, but not sure if it's real" |
+| **Context Mapping** | Learning new domains, stakeholders, organizations | "Just joined the team, need to learn this space" |
+| **Constraints** | Surfacing hidden blockers and limitations | "Engineering says 'won't work' but I don't know why" |
+| **Solution Validation** | Validating if a solution idea is viable | "Want to build X. Is this a good idea?" |
 
 This tool automatically detects which type of problem you're facing and routes you to a specialist agent:
 
 ```
-Your Problem → Coordinator (classifies) → Prioritization Agent (RICE, MoSCoW, etc.)
-                                        → Discovery Agent (questions, sequence, blindspots)
+Your Problem → Coordinator (classifies) → Prioritization Agent
+                                        → Problem Space Agent
+                                        → Context Mapping Agent
+                                        → Constraints Agent
+                                        → Solution Validation Agent
 ```
 
 The **Coordinator** explains its reasoning, so you understand why it chose a particular path. Then the **Specialist Agent** gives you a structured, actionable response tailored to your specific situation.
 
 ## Features
 
-- **Automatic problem classification** with transparent reasoning
+- **Automatic problem classification** with transparent reasoning (5 categories)
 - **Prioritization Agent**: Applies frameworks like RICE, MoSCoW, Value vs Effort with markdown tables
-- **Discovery Agent**: Generates specific questions, discovery sequence, and warns about blindspots
+- **Problem Space Agent**: Validates if problems exist and matter, with soft guesses marked ⚠️
+- **Context Mapping Agent**: Maps domains, stakeholders, and organizational dynamics
+- **Constraints Agent**: Surfaces hidden technical, organizational, and external limitations
+- **Solution Validation Agent**: Validates solutions against 4 risks (value, usability, feasibility, viability)
+- **Generative behavior**: Agents make educated guesses and proceed with analysis instead of blocking
+- **Validation questions**: Every agent ends with "Questions for Your Next Stakeholder Meeting"
 - **Streamlit chat UI** with real-time streaming responses
 - **Terminal logging** for debugging (all print statements go to terminal, not UI)
 
@@ -77,23 +89,29 @@ for event_type, data in run_streaming("Help me prioritize..."):
 ## Example Usage
 
 **Prioritization problem:**
-> "You're building a new feature with limited engineering resources. Your CEO wants Feature A (high visibility, demo-able), your biggest customer wants Feature B (threatens churn), and your data shows Feature C has the highest usage potential. Walk me through how you'd decide what to build."
+> "You're building a new feature with limited engineering resources. Your CEO wants Feature A (high visibility), your biggest customer wants Feature B (threatens churn), and your data shows Feature C has the highest usage potential. Walk me through how you'd decide."
 
-The system will:
-1. Classify as "prioritization" (explains why: multiple options, resource constraints)
-2. Apply RICE or weighted scoring framework
-3. Produce a comparison table
-4. Give a clear recommendation
+→ Routes to **Prioritization Agent** (RICE framework, comparison table, recommendation)
 
-**Discovery problem:**
-> "You're a PM assigned to a problem in a domain you've never worked in ('Total Category Optimization'). You have 2 weeks before your first stakeholder meeting. What information do you need to surface?"
+**Problem space validation:**
+> "I think our users struggle with onboarding, but I'm not sure if it's actually a problem or just my assumption. Should we invest in improving it?"
 
-The system will:
-1. Classify as "discovery" (explains why: new domain, research phase)
-2. Identify key discovery dimensions
-3. Generate 5-10 specific questions to investigate
-4. Recommend a sequence with reasoning
-5. Warn about common blindspots
+→ Routes to **Problem Space Agent** (evidence analysis, soft guesses with ⚠️, validation questions)
+
+**Context mapping:**
+> "I just joined the team as PM for the payments domain. I have 2 weeks before my first stakeholder meeting. What do I need to learn?"
+
+→ Routes to **Context Mapping Agent** (stakeholder map, domain concepts, learning roadmap)
+
+**Constraints discovery:**
+> "Engineering keeps pushing back on my feature requests saying 'it's not that simple' but they can't explain why. Help me understand what's blocking us."
+
+→ Routes to **Constraints Agent** (technical/org/external constraints, severity matrix)
+
+**Solution validation:**
+> "I want to build an AI-powered search feature for our app. Is this a good idea?"
+
+→ Routes to **Solution Validation Agent** (4-risks analysis: value, usability, feasibility, viability)
 
 ## Project Structure
 
@@ -101,18 +119,23 @@ The system will:
 master-pm-agents/
 ├── src/
 │   └── pm_agents/
-│       ├── __init__.py         # Public API exports
-│       ├── workflow.py         # LangGraph orchestration
-│       ├── coordinator.py      # Problem classification
-│       ├── state.py            # State definitions
+│       ├── __init__.py              # Public API exports
+│       ├── workflow.py              # LangGraph orchestration
+│       ├── coordinator.py           # Problem classification (5 categories)
+│       ├── state.py                 # State definitions
 │       └── agents/
 │           ├── __init__.py
-│           ├── prioritization.py
-│           └── discovery.py
-├── app.py                      # Streamlit chat UI
-├── pyproject.toml              # Package config
-├── spec.md                     # Detailed specifications
-└── .env                        # Your ANTHROPIC_API_KEY
+│           ├── prioritization.py    # Trade-offs and ranking
+│           ├── problem_space.py     # Problem validation
+│           ├── context_mapping.py   # Domain/stakeholder mapping
+│           ├── constraints.py       # Hidden limitations
+│           └── solution_validation.py  # 4-risks validation
+├── docs/
+│   └── ARCHITECTURE.md              # Detailed system documentation
+├── app.py                           # Streamlit chat UI
+├── pyproject.toml                   # Package config
+├── spec.md                          # Detailed specifications
+└── .env                             # Your ANTHROPIC_API_KEY
 ```
 
 ## Tech Stack

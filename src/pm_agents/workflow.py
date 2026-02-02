@@ -1,6 +1,15 @@
 """
 LangGraph workflow for the PM brainstorming system.
 Orchestrates the coordinator and specialist agents.
+
+Currently supports 5 specialist agents:
+- prioritization: Trade-offs and ranking decisions
+- problem_space: Validating if problems exist
+- context_mapping: Learning domains and stakeholders
+- constraints: Surfacing hidden limitations
+- solution_validation: Validating against 4 risks
+
+Future expansion planned to ~10 agents (Lens + Workflow types).
 """
 
 from dotenv import load_dotenv
@@ -11,7 +20,23 @@ from langchain_anthropic import ChatAnthropic
 
 from .state import State
 from .coordinator import run_coordinator, PROMPT as COORDINATOR_PROMPT
-from .agents import run_prioritization, run_discovery, stream_prioritization, stream_discovery
+from .agents import (
+    # Prioritization
+    run_prioritization,
+    stream_prioritization,
+    # Problem Space (new)
+    run_problem_space,
+    stream_problem_space,
+    # Context Mapping (new)
+    run_context_mapping,
+    stream_context_mapping,
+    # Constraints (new)
+    run_constraints,
+    stream_constraints,
+    # Solution Validation (new)
+    run_solution_validation,
+    stream_solution_validation,
+)
 
 # Initialize LLMs
 llm = ChatAnthropic(model="claude-sonnet-4-20250514")
@@ -38,16 +63,35 @@ def prioritization_agent_node(state: State) -> State:
     return {**state, "agent_output": output}
 
 
-def discovery_agent_node(state: State) -> State:
-    """Help user with discovery and research."""
-    output = run_discovery(state["user_input"], llm)
+def problem_space_agent_node(state: State) -> State:
+    """Help user validate if a problem exists and matters."""
+    output = run_problem_space(state["user_input"], llm)
+    return {**state, "agent_output": output}
+
+
+def context_mapping_agent_node(state: State) -> State:
+    """Help user map unfamiliar domains and stakeholders."""
+    output = run_context_mapping(state["user_input"], llm)
+    return {**state, "agent_output": output}
+
+
+def constraints_agent_node(state: State) -> State:
+    """Help user surface hidden limitations and blockers."""
+    output = run_constraints(state["user_input"], llm)
+    return {**state, "agent_output": output}
+
+
+def solution_validation_agent_node(state: State) -> State:
+    """Help user validate a solution against 4 risks."""
+    output = run_solution_validation(state["user_input"], llm)
     return {**state, "agent_output": output}
 
 
 def route_to_specialist(state: State) -> str:
     """Route to the appropriate specialist based on classification."""
-    print(f"\n--> Routing to: {state['classification']}_agent")
-    return state["classification"] + "_agent"
+    classification = state["classification"]
+    print(f"\n--> Routing to: {classification}_agent")
+    return classification + "_agent"
 
 
 # --------------------
@@ -61,24 +105,33 @@ def build_graph():
     # Add nodes
     graph.add_node("coordinator", coordinator_node)
     graph.add_node("prioritization_agent", prioritization_agent_node)
-    graph.add_node("discovery_agent", discovery_agent_node)
+    graph.add_node("problem_space_agent", problem_space_agent_node)
+    graph.add_node("context_mapping_agent", context_mapping_agent_node)
+    graph.add_node("constraints_agent", constraints_agent_node)
+    graph.add_node("solution_validation_agent", solution_validation_agent_node)
 
     # Set entry point
     graph.set_entry_point("coordinator")
 
-    # Add conditional routing
+    # Add conditional routing to all 5 specialist agents
     graph.add_conditional_edges(
         "coordinator",
         route_to_specialist,
         {
             "prioritization_agent": "prioritization_agent",
-            "discovery_agent": "discovery_agent"
+            "problem_space_agent": "problem_space_agent",
+            "context_mapping_agent": "context_mapping_agent",
+            "constraints_agent": "constraints_agent",
+            "solution_validation_agent": "solution_validation_agent",
         }
     )
 
-    # Both specialists end the workflow
+    # All specialists end the workflow
     graph.add_edge("prioritization_agent", END)
-    graph.add_edge("discovery_agent", END)
+    graph.add_edge("problem_space_agent", END)
+    graph.add_edge("context_mapping_agent", END)
+    graph.add_edge("constraints_agent", END)
+    graph.add_edge("solution_validation_agent", END)
 
     return graph.compile()
 
@@ -100,7 +153,9 @@ def run(user_input: str) -> State:
         "user_input": user_input,
         "classification": "",
         "classification_reasoning": "",
-        "agent_output": ""
+        "agent_output": "",
+        "soft_guesses": [],
+        "validation_questions": [],
     }
 
     final_state = workflow.invoke(initial_state)
@@ -136,16 +191,24 @@ def run_streaming(user_input: str):
     classification, reasoning = run_coordinator(user_input, llm)
     yield ("coordinator", {"classification": classification, "reasoning": reasoning})
 
-    # Stream specialist agent
+    # Stream specialist agent based on classification
     full_output = ""
-    if classification == "prioritization":
-        for token in stream_prioritization(user_input, llm_streaming):
-            full_output += token
-            yield ("token", token)
-    else:
-        for token in stream_discovery(user_input, llm_streaming):
-            full_output += token
-            yield ("token", token)
+
+    # Map classification to stream function
+    stream_functions = {
+        "prioritization": stream_prioritization,
+        "problem_space": stream_problem_space,
+        "context_mapping": stream_context_mapping,
+        "constraints": stream_constraints,
+        "solution_validation": stream_solution_validation,
+    }
+
+    # Get the appropriate stream function (default to problem_space)
+    stream_fn = stream_functions.get(classification, stream_problem_space)
+
+    for token in stream_fn(user_input, llm_streaming):
+        full_output += token
+        yield ("token", token)
 
     print("\n" + "="*50)
     print("STREAMING COMPLETE")

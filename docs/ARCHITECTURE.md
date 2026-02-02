@@ -18,19 +18,24 @@
 
 ### Core Concept
 
-Product Managers face two fundamentally different types of challenges:
+Product Managers face different types of challenges that require different thinking approaches:
 
 | Problem Type | Description | Example |
 |--------------|-------------|---------|
 | **Prioritization** | Choosing between options, ranking, trade-offs, resource allocation | "Which of these 3 features should we build first?" |
-| **Discovery** | Exploring unknowns, mapping stakeholders, surfacing hidden constraints | "I'm new to this domain, what should I learn first?" |
+| **Problem Space** | Validating if a problem actually exists and matters | "I think users struggle with X, but is it real?" |
+| **Context Mapping** | Learning new domains, stakeholders, organizations | "I'm new to this team, what should I learn?" |
+| **Constraints** | Surfacing hidden technical, organizational, external limitations | "Why does engineering keep saying 'won't work'?" |
+| **Solution Validation** | Validating solutions against 4 risks (value, usability, feasibility, viability) | "Is this solution idea viable?" |
 
 The system automatically detects which type of problem the user is facing and routes them to a specialized agent.
 
 ### Key Features
 
 - **Automatic Classification**: Coordinator analyzes the problem and explains its reasoning
-- **Specialized Agents**: Each agent has domain-specific prompts and frameworks
+- **5 Specialized Agents**: Each agent has domain-specific prompts and frameworks
+- **Generative Behavior**: Agents make soft guesses (marked with ⚠️) instead of blocking for input
+- **Validation Questions**: Every agent ends with "Questions for Your Next Stakeholder Meeting"
 - **Streaming Support**: Real-time token streaming for responsive UI
 - **Transparent Reasoning**: Users see why the system chose a particular path
 
@@ -59,9 +64,11 @@ The system automatically detects which type of problem the user is facing and ro
 │  │                              STATE                                   │   │
 │  │  {                                                                   │   │
 │  │    user_input: str,              # Original problem                  │   │
-│  │    classification: str,          # "prioritization" | "discovery"    │   │
+│  │    classification: str,          # One of 5 categories               │   │
 │  │    classification_reasoning: str, # Why this classification          │   │
-│  │    agent_output: str             # Final specialist response         │   │
+│  │    agent_output: str,            # Final specialist response         │   │
+│  │    soft_guesses: list,           # Agent's educated guesses          │   │
+│  │    validation_questions: list    # Questions for stakeholders        │   │
 │  │  }                                                                   │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                      │                                      │
@@ -71,7 +78,7 @@ The system automatically detects which type of problem the user is facing and ro
 │  │                   (src/pm_agents/coordinator.py)                     │   │
 │  │                                                                      │   │
 │  │  - Receives user_input                                               │   │
-│  │  - Calls LLM with COORDINATOR_PROMPT                                 │   │
+│  │  - Calls LLM with COORDINATOR_PROMPT (5 categories)                  │   │
 │  │  - Parses response to extract classification + reasoning             │   │
 │  │  - Updates state with classification info                            │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -81,20 +88,22 @@ The system automatically detects which type of problem the user is facing and ro
 │                          │  route_to_specialist() │                          │
 │                          └───────────┬───────────┘                          │
 │                                      │                                      │
-│              ┌───────────────────────┼───────────────────────┐              │
-│              │                       │                       │              │
-│              ▼                       │                       ▼              │
-│  ┌───────────────────────┐           │           ┌───────────────────────┐  │
-│  │  PRIORITIZATION AGENT │           │           │    DISCOVERY AGENT    │  │
-│  │                       │           │           │                       │  │
-│  │  - RICE framework     │           │           │  - Discovery dims     │  │
-│  │  - MoSCoW method      │           │           │  - Specific questions │  │
-│  │  - Value vs Effort    │           │           │  - Sequence plan      │  │
-│  │  - Weighted scoring   │           │           │  - Blindspot warnings │  │
-│  │  - Markdown tables    │           │           │                       │  │
-│  └───────────────────────┘           │           └───────────────────────┘  │
-│              │                       │                       │              │
-│              └───────────────────────┼───────────────────────┘              │
+│       ┌──────────┬──────────┬────────┼────────┬──────────┬──────────┐       │
+│       │          │          │        │        │          │          │       │
+│       ▼          ▼          ▼        │        ▼          ▼          ▼       │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ │ ┌─────────┐ ┌─────────┐              │
+│  │PRIORITI-│ │PROBLEM  │ │CONTEXT  │ │ │CONSTR-  │ │SOLUTION │              │
+│  │ZATION   │ │SPACE    │ │MAPPING  │ │ │AINTS    │ │VALID.   │              │
+│  │         │ │         │ │         │ │ │         │ │         │              │
+│  │ - RICE  │ │ - Exist?│ │ - Domain│ │ │ - Tech  │ │ - Value │              │
+│  │ - MoSCoW│ │ - Matter│ │ - Stake-│ │ │ - Org   │ │ - Usab. │              │
+│  │ - Value │ │ - Soft  │ │   holder│ │ │ - Extern│ │ - Feas. │              │
+│  │   /Efft │ │   guesses│ │ - Learn │ │ │ - Sever-│ │ - Viab. │              │
+│  │ - Tables│ │ - ⚠️ flag│ │   road- │ │ │   ity   │ │ - 🔴🟡🟢│              │
+│  │         │ │         │ │   map   │ │ │   matrix│ │         │              │
+│  └─────────┘ └─────────┘ └─────────┘ │ └─────────┘ └─────────┘              │
+│       │          │          │        │        │          │                  │
+│       └──────────┴──────────┴────────┼────────┴──────────┘                  │
 │                                      │                                      │
 │                                      ▼                                      │
 │                               ┌─────────────┐                               │
@@ -125,28 +134,30 @@ The system automatically detects which type of problem the user is facing and ro
 
 ```
 1. User Input
-   └── "Help me decide between Feature A, B, and C..."
+   └── "I think users struggle with onboarding, but I'm not sure if it's real..."
 
 2. Coordinator Agent
    ├── Receives: user_input
    ├── Calls: LLM with COORDINATOR_PROMPT
    ├── Parses: CLASSIFICATION + REASONING from response
-   └── Returns: classification="prioritization", reasoning="..."
+   └── Returns: classification="problem_space", reasoning="..."
 
 3. Router
-   └── Routes to: prioritization_agent (based on classification)
+   └── Routes to: problem_space_agent (based on classification)
 
-4. Prioritization Agent
+4. Problem Space Agent
    ├── Receives: user_input
-   ├── Calls: LLM with PRIORITIZATION_PROMPT
-   └── Returns: Structured analysis with RICE table + recommendation
+   ├── Calls: LLM with PROBLEM_SPACE_PROMPT
+   └── Returns: Analysis with soft guesses (⚠️) + validation questions
 
 5. Final State
    └── {
-         user_input: "Help me decide...",
-         classification: "prioritization",
-         classification_reasoning: "This involves choosing between...",
-         agent_output: "## Core Trade-off\n\n..."
+         user_input: "I think users struggle...",
+         classification: "problem_space",
+         classification_reasoning: "User is uncertain if the problem exists...",
+         agent_output: "## Problem Statement Reframe\n\n...",
+         soft_guesses: [],
+         validation_questions: []
        }
 ```
 
@@ -180,9 +191,15 @@ The workflow uses a TypedDict to pass state between nodes:
 
 class State(TypedDict):
     user_input: str                  # Original problem statement from user
-    classification: str              # "prioritization" or "discovery"
+    classification: str              # One of: prioritization, problem_space,
+                                     #         context_mapping, constraints,
+                                     #         solution_validation
     classification_reasoning: str    # 2-3 sentence explanation
     agent_output: str                # Full response from specialist agent
+    soft_guesses: list               # [{"guess": "...", "confidence": "...",
+                                     #   "validation_question": "..."}]
+    validation_questions: list       # [{"question": "...", "priority": "...",
+                                     #   "context": "..."}]
 ```
 
 ### State Flow Through Nodes
@@ -191,7 +208,10 @@ class State(TypedDict):
 |------|-------|--------|
 | coordinator_node | user_input | classification, classification_reasoning |
 | prioritization_agent_node | user_input | agent_output |
-| discovery_agent_node | user_input | agent_output |
+| problem_space_agent_node | user_input | agent_output |
+| context_mapping_agent_node | user_input | agent_output |
+| constraints_agent_node | user_input | agent_output |
+| solution_validation_agent_node | user_input | agent_output |
 
 ---
 
@@ -201,7 +221,7 @@ class State(TypedDict):
 
 ### Coordinator Agent
 
-**Purpose**: Classify the problem type and explain the reasoning transparently to the user.
+**Purpose**: Classify the problem type into one of 5 categories and explain the reasoning transparently to the user.
 
 **Location**: `src/pm_agents/coordinator.py`
 
@@ -210,409 +230,201 @@ class State(TypedDict):
 ```
 You are a PM coach coordinator. Your job is to:
 1. Read the user's problem statement
-2. Classify it as either "prioritization" or "discovery"
+2. Classify it into ONE of these 5 categories
 3. Explain your classification in 2-3 sentences
 
-Prioritization problems involve choosing between options, ranking, trade-offs,
-or resource allocation.
+## Categories
 
-Discovery problems involve understanding, researching, mapping stakeholders,
-or surfacing hidden information.
+**prioritization**
+Use when: Choosing between options, ranking, trade-offs, resource allocation,
+deciding what to build first.
+Examples: "Should we build A or B?", "How do I prioritize these features?"
 
-Respond in this exact format:
-CLASSIFICATION: [prioritization or discovery]
-REASONING: [2-3 sentences explaining why]
+**problem_space**
+Use when: Validating if a problem actually exists and matters. User is uncertain
+if the pain point is real.
+Examples: "I think users struggle with X, but not sure if real problem"
+
+**context_mapping**
+Use when: User needs to learn/map an unfamiliar domain, organization, or
+stakeholder landscape.
+Examples: "Just joined team, need to learn the domain", "Who are the stakeholders?"
+
+**constraints**
+Use when: User suspects hidden blockers or limitations but can't articulate them.
+Examples: "Engineering keeps saying 'won't work' but I don't know why"
+
+**solution_validation**
+Use when: User has a solution idea and wants to validate if it's a good idea
+(value, usability, feasibility, viability).
+Examples: "Want to build X. Is this a good idea?"
+
+## Response Format
+CLASSIFICATION: [prioritization, problem_space, context_mapping, constraints,
+                 or solution_validation]
+REASONING: [2-3 sentences explaining why this category fits]
 ```
 
 #### Classification Logic
 
-The coordinator distinguishes between two problem types based on signal patterns:
-
 | Classification | Signal Words/Patterns | Core Question |
 |----------------|----------------------|---------------|
-| **Prioritization** | "decide", "choose", "rank", "prioritize", "trade-off", "limited resources", "what to build first", "which one", "compare" | "What should we do?" |
-| **Discovery** | "understand", "discover", "research", "map", "identify", "surface", "learn", "explore", "new to", "unfamiliar" | "What do we need to know?" |
-
-#### Detailed Classification Criteria
-
-**Route to Prioritization when:**
-- User has multiple concrete options and needs to choose or rank them
-- Resource constraints (time, money, people) force trade-offs
-- Stakeholders disagree on what to do first
-- User needs a structured framework to justify a decision
-- The options are known, but the decision criteria are unclear
-
-**Route to Discovery when:**
-- User needs to understand a problem space before making decisions
-- User is exploring stakeholders, constraints, or unknowns
-- User is new to a domain and needs to map it
-- The problem itself is unclear or poorly defined
-- User needs to surface hidden information or assumptions
-
-#### Example Classifications
-
-| User Input | Classification | Reasoning |
-|------------|----------------|-----------|
-| "We have Feature A, B, and C. Limited eng time. What should we build?" | prioritization | Multiple options, resource constraint, needs ranking |
-| "I'm new to the payments domain. What should I learn first?" | discovery | New domain, needs to understand before deciding |
-| "Should we build for enterprise or SMB first?" | prioritization | Two options, needs trade-off analysis |
-| "Who are the stakeholders for our checkout flow?" | discovery | Mapping stakeholders, surfacing information |
-| "CEO wants X, customer wants Y, data shows Z. Help me decide." | prioritization | Multiple competing options, needs framework |
-| "What questions should I ask in user interviews?" | discovery | Research phase, generating investigation questions |
+| **prioritization** | "decide", "choose", "rank", "prioritize", "trade-off", "limited resources", "what to build first" | "What should we do first?" |
+| **problem_space** | "not sure if real", "think users struggle", "is this actually a problem", "should we invest" | "Does this problem exist?" |
+| **context_mapping** | "new to", "just joined", "unfamiliar", "learn the domain", "who are the stakeholders" | "What do I need to know?" |
+| **constraints** | "won't work", "can't explain why", "what's blocking", "keeps pushing back", "limitations" | "What's stopping us?" |
+| **solution_validation** | "want to build", "is this a good idea", "will this work", "should we proceed" | "Is this solution viable?" |
 
 #### Response Parsing
 
-The coordinator's response is parsed using simple string matching:
+The coordinator's response is parsed using string matching:
 
 ```python
 def parse_response(response_text: str) -> tuple[str, str]:
-    classification = "discovery"  # default fallback
+    # Valid classifications (order matters for matching)
+    valid_classifications = [
+        "solution_validation",  # Check longer names first
+        "context_mapping",
+        "problem_space",
+        "prioritization",
+        "constraints",
+    ]
+
+    classification = "problem_space"  # default fallback
     reasoning = ""
 
     lines = response_text.strip().split("\n")
     for line in lines:
         if line.upper().startswith("CLASSIFICATION:"):
             value = line.split(":", 1)[1].strip().lower()
-            if "prioritization" in value:
-                classification = "prioritization"
-            else:
-                classification = "discovery"
+            for valid in valid_classifications:
+                if valid in value:
+                    classification = valid
+                    break
         elif line.upper().startswith("REASONING:"):
             reasoning = line.split(":", 1)[1].strip()
-
-    # Handle multi-line reasoning
-    if not reasoning:
-        for i, line in enumerate(lines):
-            if line.upper().startswith("REASONING:"):
-                reasoning = " ".join(lines[i:]).replace("REASONING:", "").strip()
-                break
 
     return classification, reasoning
 ```
 
-**Why "discovery" is the default**: If parsing fails or the classification is ambiguous, discovery is safer—it encourages exploration before commitment, whereas jumping to prioritization with incomplete information can lead to poor decisions.
+**Why "problem_space" is the default**: If parsing fails or the classification is ambiguous, problem_space is safer—it encourages validation before commitment.
 
 ---
 
 ### Prioritization Agent
 
-**Purpose**: Help users make trade-off decisions using structured frameworks, producing actionable recommendations with clear reasoning.
+**Purpose**: Help users make trade-off decisions using structured frameworks.
 
 **Location**: `src/pm_agents/agents/prioritization.py`
 
-#### System Prompt
-
-```
-You are a senior PM helping with prioritization decisions.
-
-When given a problem:
-1. Restate the core trade-off in 1-2 sentences
-2. Select the most appropriate framework (RICE, MoSCoW, Value vs Effort,
-   or weighted scoring) and explain why
-3. Apply the framework with a markdown table
-4. Give a clear recommendation with reasoning
-5. Note your assumptions and what you'd validate
-
-Be specific to their situation. Don't give generic framework explanations—apply
-it to their actual problem.
-
-If you need more information to score accurately, state your assumptions
-explicitly rather than asking questions.
-```
-
-#### Available Frameworks
-
-##### 1. RICE Framework
-**Best for**: Comparing features or initiatives when you have rough data on reach and effort.
-
-| Component | Description | Scale |
-|-----------|-------------|-------|
-| **Reach** | How many users/customers will this affect in a given time period? | Number (e.g., 1000 users/quarter) |
-| **Impact** | How much will this affect each user? | 0.25 (minimal) to 3 (massive) |
-| **Confidence** | How sure are you about these estimates? | 0-100% |
-| **Effort** | How many person-months will this take? | Number (e.g., 2 person-months) |
-
-**Formula**: `RICE Score = (Reach × Impact × Confidence) / Effort`
-
-**Example Table Output**:
-```markdown
-| Feature | Reach | Impact | Confidence | Effort | RICE Score |
-|---------|-------|--------|------------|--------|------------|
-| Feature A | 5000 | 2 | 80% | 3 | 2,667 |
-| Feature B | 2000 | 3 | 90% | 2 | 2,700 |
-| Feature C | 10000 | 1 | 70% | 4 | 1,750 |
-```
-
-##### 2. MoSCoW Method
-**Best for**: Release planning, MVP scoping, or when stakeholders need to agree on what's essential vs. nice-to-have.
-
-| Category | Definition | Implication |
-|----------|------------|-------------|
-| **Must Have** | Non-negotiable for launch | Without these, the product fails |
-| **Should Have** | Important but not critical | Can launch without, but should add soon |
-| **Could Have** | Nice to have | Only if time/resources permit |
-| **Won't Have** | Explicitly out of scope | Deferred to future releases |
-
-**Example Table Output**:
-```markdown
-| Feature | Category | Rationale |
-|---------|----------|-----------|
-| User authentication | Must Have | Legal/security requirement |
-| Password reset | Must Have | Basic usability expectation |
-| Social login | Should Have | Reduces friction but not blocking |
-| Dark mode | Could Have | User request but low impact |
-| AI recommendations | Won't Have | Requires ML infrastructure we don't have |
-```
-
-##### 3. Value vs. Effort Matrix
-**Best for**: Quick visual prioritization, especially in workshops or when explaining to non-technical stakeholders.
-
-```
-                    HIGH VALUE
-                        │
-     ┌──────────────────┼──────────────────┐
-     │                  │                  │
-     │   Quick Wins     │   Big Bets       │
-     │   (Do First)     │   (Plan These)   │
-     │                  │                  │
-LOW ─┼──────────────────┼──────────────────┼─ HIGH
-EFFORT                  │                  EFFORT
-     │                  │                  │
-     │   Fill-Ins       │   Money Pits     │
-     │   (Do If Time)   │   (Avoid)        │
-     │                  │                  │
-     └──────────────────┼──────────────────┘
-                        │
-                    LOW VALUE
-```
-
-**Example Table Output**:
-```markdown
-| Feature | Value | Effort | Quadrant |
-|---------|-------|--------|----------|
-| Feature A | High | Low | Quick Win ✅ |
-| Feature B | High | High | Big Bet |
-| Feature C | Low | Low | Fill-In |
-| Feature D | Low | High | Money Pit ❌ |
-```
-
-##### 4. Weighted Scoring
-**Best for**: Complex decisions with multiple criteria, or when you need to make the decision-making process transparent and auditable.
-
-**Process**:
-1. Define criteria (e.g., revenue impact, user satisfaction, strategic alignment)
-2. Assign weights to each criterion (must sum to 100%)
-3. Score each option on each criterion (typically 1-5 or 1-10)
-4. Calculate weighted score
-
-**Example Table Output**:
-```markdown
-| Criteria | Weight | Feature A | Feature B | Feature C |
-|----------|--------|-----------|-----------|-----------|
-| Revenue Impact | 30% | 4 | 3 | 5 |
-| User Satisfaction | 25% | 5 | 4 | 3 |
-| Strategic Fit | 25% | 3 | 5 | 4 |
-| Eng Complexity | 20% | 4 | 2 | 3 |
-| **Weighted Score** | | **4.0** | **3.6** | **3.9** |
-```
-
-#### Framework Selection Guide
-
-| Situation | Recommended Framework | Why |
-|-----------|----------------------|-----|
-| Comparing 3+ features with some usage data | RICE | Quantitative, handles uncertainty |
-| Scoping an MVP or release | MoSCoW | Clear categories, stakeholder alignment |
-| Quick workshop prioritization | Value vs Effort | Visual, fast, intuitive |
-| Executive decision with multiple criteria | Weighted Scoring | Transparent, auditable |
-| Stakeholder conflict on priorities | Weighted Scoring | Makes criteria explicit, reduces politics |
+#### Key Capabilities
+- RICE framework
+- MoSCoW method
+- Value vs Effort matrix
+- Weighted scoring
 
 #### Expected Output Structure
-
-1. **Context Restatement** (1-2 sentences)
-   - Shows understanding of the specific situation
-   - Identifies the core trade-off
-
-2. **Framework Selection** (1 paragraph)
-   - Which framework and why it fits this situation
-   - Acknowledges limitations if any
-
-3. **Analysis Table** (Markdown)
-   - Framework-appropriate columns
-   - Scores/ratings for each option
-   - Final ranking or categorization
-
-4. **Recommendation** (1-2 paragraphs)
-   - Clear "do this" statement
-   - Reasoning that connects to the analysis
-   - Sequencing if multiple items
-
-5. **Assumptions & Validation** (Bullet list)
-   - What was assumed to make the analysis
-   - What the user should validate before acting
-   - Risks if assumptions are wrong
+1. Context restatement (1-2 sentences)
+2. Framework selection with reasoning
+3. Analysis table (Markdown)
+4. Clear recommendation
+5. Assumptions & validation notes
 
 ---
 
-### Discovery Agent
+### Problem Space Agent
 
-**Purpose**: Help users explore and map unfamiliar problem spaces, generating specific investigation questions and a structured approach to learning.
+**Purpose**: Validate whether problems actually exist and matter to users.
 
-**Location**: `src/pm_agents/agents/discovery.py`
+**Location**: `src/pm_agents/agents/problem_space.py`
 
-#### System Prompt
+#### Generative Behavior
 
-```
-You are a senior PM helping with discovery and research.
-
-When given a problem:
-1. Frame what the user is actually trying to discover (the underlying question)
-2. Identify 3-5 discovery dimensions relevant to their situation
-3. Generate 5-10 specific, concrete questions they should investigate
-4. Recommend a sequence for discovery with reasoning
-5. Warn about common blindspots for this type of discovery
-
-Be specific to their situation. Don't give generic discovery advice—tailor to
-their actual domain and context.
-
-Assume they're smart but new to this specific problem. Give them a roadmap,
-not a lecture.
-```
-
-#### Discovery Dimensions
-
-The agent identifies 3-5 dimensions relevant to the user's specific situation. Common dimensions include:
-
-| Dimension | What It Covers | Example Questions |
-|-----------|---------------|-------------------|
-| **Stakeholder Landscape** | Who has power, interest, or influence | "Who can block this?" "Who benefits?" |
-| **User Needs** | What users actually want vs. what they say | "What job are they hiring this for?" |
-| **Technical Constraints** | What's possible, what's hard, what's impossible | "What are the system dependencies?" |
-| **Business Context** | Revenue model, metrics, strategic priorities | "How does this align with company goals?" |
-| **Competitive Landscape** | What alternatives exist, what's table stakes | "What do competitors do here?" |
-| **Regulatory/Legal** | Compliance requirements, legal constraints | "What regulations apply?" |
-| **Historical Context** | What's been tried before, why it failed/succeeded | "Has this been attempted before?" |
-| **Organizational Dynamics** | Politics, culture, decision-making patterns | "Who needs to approve this?" |
-
-#### Question Generation Approach
-
-The agent generates 5-10 **specific, concrete questions** rather than generic prompts. Good discovery questions are:
-
-| Quality | Bad Example | Good Example |
-|---------|-------------|--------------|
-| Specific | "What do users want?" | "What's the #1 complaint from users who churned in the last 90 days?" |
-| Actionable | "Research the market" | "Which 3 competitors should I demo this week?" |
-| Falsifiable | "Is this a good idea?" | "What would make us kill this project?" |
-| Concrete | "Talk to stakeholders" | "What does [specific person] need to say yes?" |
-
-#### Discovery Sequence Logic
-
-The agent recommends an order for investigation based on:
-
-1. **Dependencies**: Some information unlocks other questions
-2. **Risk Reduction**: Address highest-uncertainty items first
-3. **Stakeholder Access**: Some people are harder to reach
-4. **Time Sensitivity**: Some information has expiration dates
-
-**Typical Sequence Pattern**:
-```
-Week 1: Foundational Understanding
-├── Internal docs and past decisions
-├── Key stakeholder 1:1s
-└── Competitive landscape scan
-
-Week 2: User/Customer Deep Dive
-├── User interviews or data analysis
-├── Support ticket review
-└── Sales/CS team insights
-
-Week 3: Synthesis & Validation
-├── Cross-reference findings
-├── Identify contradictions
-└── Validate assumptions with experts
-```
-
-#### Common Blindspots
-
-The agent warns about blindspots based on the type of discovery:
-
-| Discovery Type | Common Blindspots |
-|----------------|-------------------|
-| **New Domain** | Assuming vocabulary means the same thing; missing tribal knowledge |
-| **User Research** | Confirmation bias; talking to fans not churned users |
-| **Technical Discovery** | Underestimating dependencies; ignoring tech debt |
-| **Stakeholder Mapping** | Missing informal influencers; assuming org chart = power |
-| **Competitive Analysis** | Focusing only on features; missing business model differences |
-| **Problem Definition** | Solving symptoms not causes; accepting problem framing uncritically |
+Instead of asking clarifying questions and waiting, this agent:
+1. Makes soft guesses based on available context (marked with ⚠️)
+2. Proceeds with analysis using those guesses
+3. Generates validation questions for stakeholders
 
 #### Expected Output Structure
 
-1. **Problem Framing** (1-2 paragraphs)
-   - The underlying question the user is trying to answer
-   - Why this framing matters
-   - What success looks like
+1. **Problem Statement Reframe** - What the PM is trying to validate
+2. **Soft Guesses** (marked with ⚠️) - Educated guesses about who, frequency, workarounds, why it matters
+3. **Problem Existence Analysis** - Evidence FOR, AGAINST, and UNKNOWN
+4. **Problem Severity Assessment** - Frequency, impact, alternatives
+5. **Risk Assessment** - What if real vs fake, recommendation
+6. **Questions for Your Next Stakeholder Meeting** - 5-7 specific validation questions
 
-2. **Discovery Dimensions** (3-5 items)
-   - Each dimension named and explained
-   - Why it's relevant to this specific situation
-   - What kind of information lives here
+#### Soft Guess Format
 
-3. **Specific Questions** (5-10 items)
-   - Numbered, concrete, actionable
-   - Grouped by dimension or theme
-   - Includes who to ask or where to look
-
-4. **Recommended Sequence** (Ordered list or timeline)
-   - What to investigate first and why
-   - Dependencies between questions
-   - Suggested timeline if appropriate
-
-5. **Blindspot Warnings** (Bullet list)
-   - What's easy to miss in this type of discovery
-   - Cognitive biases to watch for
-   - Questions the user might not think to ask
-
-#### Example Output Excerpt
-
-```markdown
-## Problem Framing
-
-You're trying to understand the "Total Category Optimization" domain well enough
-to have credible conversations with stakeholders in 2 weeks. The underlying
-question isn't "what is TCO?" but "what do I need to know to be useful in my
-first stakeholder meeting?"
-
-## Discovery Dimensions
-
-### 1. Domain Vocabulary & Mental Models
-The TCO space likely has specific terminology that insiders use...
-
-### 2. Stakeholder Landscape
-Before the meeting, you need to know who will be in the room...
-
-## Specific Questions to Investigate
-
-1. **What are the 5 key metrics that define success in TCO?** (Ask: your manager,
-   look: internal dashboards)
-2. **Who are the 3 most influential stakeholders and what do they care about?**
-   (Ask: your skip-level, look: recent decision docs)
-3. ...
-
-## Recommended Sequence
-
-**Days 1-3**: Foundation
-- Read the last 3 quarterly reviews mentioning TCO
-- Schedule 1:1s with your manager and one domain expert
-
-**Days 4-7**: Stakeholder mapping
-...
-
-## Blindspot Warnings
-
-- ⚠️ **Vocabulary trap**: Words like "optimization" may mean something specific
-  in this domain. Don't assume.
-- ⚠️ **Past failures**: Ask "what's been tried before?" early—there may be
-  political landmines.
 ```
+⚠️ **[Guess]**: [Your assumption] — *Confidence: High/Medium/Low*
+```
+
+---
+
+### Context Mapping Agent
+
+**Purpose**: Help PMs map unfamiliar domains, stakeholders, and organizational dynamics.
+
+**Location**: `src/pm_agents/agents/context_mapping.py`
+
+#### Expected Output Structure
+
+1. **Context Summary** - What the agent understands about the situation
+2. **Soft Guesses** (marked with ⚠️) - Guesses about stakeholders, terminology, dynamics, history
+3. **Stakeholder Map** - Table with Role, Motivation, Influence, Priority
+4. **Domain Concepts** - 5-7 key terms and why they matter
+5. **Hidden Dynamics to Watch For** - Who really makes decisions, history, unwritten rules
+6. **Learning Roadmap** - Week 1, Week 2, Week 3+ priorities
+7. **Questions for Your Next Stakeholder Meeting** - Questions for leadership, ICs, and cross-functional partners
+
+---
+
+### Constraints Agent
+
+**Purpose**: Surface hidden limitations, blockers, and technical/organizational constraints.
+
+**Location**: `src/pm_agents/agents/constraints.py`
+
+#### Expected Output Structure
+
+1. **Situation Summary** - What they're trying to accomplish
+2. **Soft Guesses About Constraints** (marked with ⚠️) - Technical, resource, organizational, external, historical
+3. **Constraint Deep Dive** - Analysis by category
+4. **Constraint Severity Matrix** - Table with Type, Severity, Can Be Changed, Workaround
+5. **Recommended Actions** - Accept, Negotiate, Escalate, or Pivot for each constraint
+6. **Questions for Your Next Stakeholder Meeting** - Questions for Engineering, Leadership, Legal, dependent teams
+
+---
+
+### Solution Validation Agent
+
+**Purpose**: Validate proposed solutions against the 4 product risks (from Marty Cagan).
+
+**Location**: `src/pm_agents/agents/solution_validation.py`
+
+#### The 4 Risks
+
+| Risk | Question | Analysis Points |
+|------|----------|-----------------|
+| **Value** | Will customers buy/use it? | Current behavior, value proposition, evidence for/against |
+| **Usability** | Can users figure it out? | Complexity, learning curve, familiar patterns, edge cases |
+| **Feasibility** | Can engineering build it? | Technical complexity, new vs existing, dependencies, timeline |
+| **Viability** | Does it work for the business? | Revenue impact, cost structure, strategic fit, stakeholder buy-in |
+
+#### Risk Level Indicators
+- 🔴 High risk
+- 🟡 Medium risk
+- 🟢 Low risk
+
+#### Expected Output Structure
+
+1. **Solution Summary** - What the proposed solution is
+2. **Soft Guesses** (marked with ⚠️) - Target users, technical approach, business model, competitive context
+3. **Four Risks Analysis** - Each risk with analysis and risk level (🔴/🟡/🟢)
+4. **Risk Summary Matrix** - Table with Risk, Level, Confidence, Key Uncertainty
+5. **Recommendation** - Overall assessment, biggest risk, suggested next step
+6. **Questions for Your Next Stakeholder Meeting** - Questions for Users, Engineering, Business stakeholders
 
 ---
 
@@ -624,12 +436,15 @@ master-pm-agents/
 │   └── pm_agents/
 │       ├── __init__.py              # Public API: run, run_streaming, State
 │       ├── workflow.py              # LangGraph orchestration
-│       ├── coordinator.py           # Coordinator agent logic
+│       ├── coordinator.py           # Coordinator agent (5 categories)
 │       ├── state.py                 # State TypedDict definition
 │       └── agents/
 │           ├── __init__.py          # Agent exports
-│           ├── prioritization.py    # Prioritization specialist
-│           └── discovery.py         # Discovery specialist
+│           ├── prioritization.py    # Trade-offs and ranking
+│           ├── problem_space.py     # Problem validation
+│           ├── context_mapping.py   # Domain/stakeholder mapping
+│           ├── constraints.py       # Hidden limitations
+│           └── solution_validation.py  # 4-risks validation
 ├── docs/
 │   └── ARCHITECTURE.md              # This file
 ├── app.py                           # Streamlit chat UI
@@ -651,7 +466,7 @@ from pm_agents import run, run_streaming, State
 
 # Run with full response
 result: State = run("Your PM problem...")
-print(result["classification"])      # "prioritization" or "discovery"
+print(result["classification"])      # One of 5 categories
 print(result["agent_output"])        # Full specialist response
 
 # Run with streaming (for UIs)
@@ -681,12 +496,30 @@ classification, reasoning = parse_response(response_text)
 
 ```python
 from pm_agents.agents import (
-    run_prioritization,    # (user_input, llm) -> str
-    stream_prioritization, # (user_input, llm_streaming) -> Generator[str]
-    run_discovery,         # (user_input, llm) -> str
-    stream_discovery,      # (user_input, llm_streaming) -> Generator[str]
+    # Prioritization
+    run_prioritization,         # (user_input, llm) -> str
+    stream_prioritization,      # (user_input, llm_streaming) -> Generator[str]
     PRIORITIZATION_PROMPT,
-    DISCOVERY_PROMPT,
+
+    # Problem Space
+    run_problem_space,
+    stream_problem_space,
+    PROBLEM_SPACE_PROMPT,
+
+    # Context Mapping
+    run_context_mapping,
+    stream_context_mapping,
+    CONTEXT_MAPPING_PROMPT,
+
+    # Constraints
+    run_constraints,
+    stream_constraints,
+    CONSTRAINTS_PROMPT,
+
+    # Solution Validation
+    run_solution_validation,
+    stream_solution_validation,
+    SOLUTION_VALIDATION_PROMPT,
 )
 ```
 
@@ -694,32 +527,38 @@ from pm_agents.agents import (
 
 ## Adding New Agents
 
-To add a new specialist agent (e.g., "stakeholder_mapping"):
+To add a new specialist agent (e.g., "competitive_analysis"):
 
 ### 1. Create the Agent Module
 
 ```python
-# src/pm_agents/agents/stakeholder_mapping.py
+# src/pm_agents/agents/competitive_analysis.py
 
 """
-Stakeholder Mapping Agent
-Helps identify and analyze stakeholders for a product or initiative.
+Competitive Analysis Agent
+Helps analyze competitive landscape and positioning.
 """
 
-PROMPT = """You are a senior PM helping with stakeholder analysis.
+PROMPT = """You are a senior PM helping with competitive analysis.
 
-When given a problem:
-1. Identify all relevant stakeholders
-2. Create a power/interest grid
-3. Recommend engagement strategies for each quadrant
-4. Flag potential conflicts or dependencies
-5. Suggest a communication plan
+## Your Approach: Generative, Not Blocking
+Instead of asking clarifying questions and waiting, you should:
+1. Make soft guesses based on available context (mark with ⚠️)
+2. Proceed with your analysis using those guesses
+3. Generate validation questions the PM should ask stakeholders
 
-Be specific to their situation..."""
+## Output Structure
+...
+
+---
+
+## Questions for Your Next Stakeholder Meeting
+Generate 5-7 specific questions...
+"""
 
 
 def run_agent(user_input: str, llm) -> str:
-    """Run the stakeholder mapping agent."""
+    """Run the competitive analysis agent."""
     messages = [
         {"role": "system", "content": PROMPT},
         {"role": "user", "content": user_input}
@@ -744,49 +583,74 @@ def stream_agent(user_input: str, llm_streaming):
 ```python
 # src/pm_agents/agents/__init__.py
 
-from .stakeholder_mapping import PROMPT as STAKEHOLDER_PROMPT
-from .stakeholder_mapping import run_agent as run_stakeholder
-from .stakeholder_mapping import stream_agent as stream_stakeholder
+from .competitive_analysis import PROMPT as COMPETITIVE_ANALYSIS_PROMPT
+from .competitive_analysis import run_agent as run_competitive_analysis
+from .competitive_analysis import stream_agent as stream_competitive_analysis
 
 __all__ = [
     # ... existing exports ...
-    "STAKEHOLDER_PROMPT",
-    "run_stakeholder",
-    "stream_stakeholder",
+    "COMPETITIVE_ANALYSIS_PROMPT",
+    "run_competitive_analysis",
+    "stream_competitive_analysis",
 ]
 ```
 
 ### 3. Update Coordinator Prompt
 
-Add the new classification option to the coordinator's prompt in `coordinator.py`.
-
-### 4. Add Node and Routing
-
-In `workflow.py`:
+Add the new classification option to the coordinator's prompt in `coordinator.py`:
 
 ```python
-from .agents import run_stakeholder, stream_stakeholder
+**competitive_analysis**
+Use when: User needs to understand competitive landscape or positioning.
+Examples: "Who are our competitors?", "How do we differentiate?"
+```
 
-def stakeholder_agent_node(state: State) -> State:
-    output = run_stakeholder(state["user_input"], llm)
+### 4. Update parse_response()
+
+Add the new classification to the valid list:
+
+```python
+valid_classifications = [
+    "competitive_analysis",  # Add new one
+    "solution_validation",
+    "context_mapping",
+    ...
+]
+```
+
+### 5. Add Node and Routing in workflow.py
+
+```python
+from .agents import run_competitive_analysis, stream_competitive_analysis
+
+def competitive_analysis_agent_node(state: State) -> State:
+    output = run_competitive_analysis(state["user_input"], llm)
     return {**state, "agent_output": output}
 
 # In build_graph():
-graph.add_node("stakeholder_agent", stakeholder_agent_node)
-graph.add_edge("stakeholder_agent", END)
+graph.add_node("competitive_analysis_agent", competitive_analysis_agent_node)
+graph.add_edge("competitive_analysis_agent", END)
 
 # Update conditional edges mapping
+graph.add_conditional_edges(
+    "coordinator",
+    route_to_specialist,
+    {
+        # ... existing routes ...
+        "competitive_analysis_agent": "competitive_analysis_agent",
+    }
+)
 ```
 
-### 5. Update Streaming Logic
+### 6. Update Streaming Logic
 
-In `run_streaming()`, add the new branch:
+In `run_streaming()`, add to the stream_functions dict:
 
 ```python
-elif classification == "stakeholder":
-    for token in stream_stakeholder(user_input, llm_streaming):
-        full_output += token
-        yield ("token", token)
+stream_functions = {
+    # ... existing ...
+    "competitive_analysis": stream_competitive_analysis,
+}
 ```
 
 ---
