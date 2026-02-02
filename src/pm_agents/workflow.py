@@ -39,8 +39,66 @@ from .agents import (
 )
 
 # Initialize LLMs
-llm = ChatAnthropic(model="claude-sonnet-4-20250514")
-llm_streaming = ChatAnthropic(model="claude-sonnet-4-20250514", streaming=True)
+# max_tokens=8192 ensures complete output for complex multi-section responses
+# (agents can produce 4,000-7,000 tokens; default 1024 causes truncation)
+llm = ChatAnthropic(model="claude-sonnet-4-20250514", max_tokens=8192)
+llm_streaming = ChatAnthropic(model="claude-sonnet-4-20250514", streaming=True, max_tokens=8192)
+
+
+# --------------------
+# OUTPUT QUALITY VALIDATION
+# --------------------
+
+def validate_agent_output(output: str) -> bool:
+    """
+    Check that agent output meets minimum quality requirements.
+
+    Logs warnings but does not block - this is for monitoring output quality.
+
+    Returns:
+        True if output passes all checks, False if any issues found.
+    """
+    issues = []
+
+    # Check for required sections
+    required_sections = [
+        "Questions for Your Next Stakeholder Meeting",
+        "Must Validate",
+    ]
+
+    missing = [section for section in required_sections if section not in output]
+    if missing:
+        issues.append(f"Missing required sections: {missing}")
+
+    # Check for vague language
+    vague_phrases = [
+        "proceed with caution",
+        "it depends",
+        "may or may not",
+        "consider carefully",
+        "could be viable",
+    ]
+
+    output_lower = output.lower()
+    found_vague = [phrase for phrase in vague_phrases if phrase in output_lower]
+    if found_vague:
+        issues.append(f"Used vague language: {found_vague}")
+
+    # Check for soft guesses without validation questions
+    soft_guess_count = output.count("⚠️")
+    if soft_guess_count > 0 and "Must Validate" not in output:
+        issues.append(f"Found {soft_guess_count} soft guesses but no 'Must Validate' section")
+
+    # Log warnings
+    if issues:
+        print("\n" + "!"*50)
+        print("OUTPUT QUALITY WARNINGS:")
+        for issue in issues:
+            print(f"  ⚠️ {issue}")
+        print("!"*50 + "\n")
+        return False
+
+    return True
 
 
 # --------------------
@@ -160,6 +218,9 @@ def run(user_input: str) -> State:
 
     final_state = workflow.invoke(initial_state)
 
+    # Validate output quality (logs warnings but doesn't block)
+    validate_agent_output(final_state['agent_output'])
+
     print("\n" + "#"*60)
     print("FINAL RESULTS")
     print("#"*60)
@@ -209,6 +270,9 @@ def run_streaming(user_input: str):
     for token in stream_fn(user_input, llm_streaming):
         full_output += token
         yield ("token", token)
+
+    # Validate output quality (logs warnings but doesn't block)
+    validate_agent_output(full_output)
 
     print("\n" + "="*50)
     print("STREAMING COMPLETE")
