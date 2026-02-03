@@ -19,7 +19,12 @@ from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
 
 from .state import State
-from .coordinator import run_coordinator, PROMPT as COORDINATOR_PROMPT
+from .coordinator import (
+    run_coordinator,
+    run_refinement,
+    extract_soft_guesses,
+    PROMPT as COORDINATOR_PROMPT,
+)
 from .agents import (
     # Prioritization
     run_prioritization,
@@ -107,11 +112,12 @@ def validate_agent_output(output: str) -> bool:
 
 def coordinator_node(state: State) -> State:
     """Classify the problem and explain why."""
-    classification, reasoning = run_coordinator(state["user_input"], llm)
+    classification, reasoning, alternatives = run_coordinator(state["user_input"], llm)
     return {
         **state,
         "classification": classification,
-        "classification_reasoning": reasoning
+        "classification_reasoning": reasoning,
+        "classification_alternatives": alternatives,
     }
 
 
@@ -249,8 +255,8 @@ def run_streaming(user_input: str):
     print(f"\nUser input: {user_input}")
 
     # Run coordinator
-    classification, reasoning = run_coordinator(user_input, llm)
-    yield ("coordinator", {"classification": classification, "reasoning": reasoning})
+    classification, reasoning, alternatives = run_coordinator(user_input, llm)
+    yield ("coordinator", {"classification": classification, "reasoning": reasoning, "alternatives": alternatives})
 
     # Stream specialist agent based on classification
     full_output = ""
@@ -276,6 +282,140 @@ def run_streaming(user_input: str):
 
     print("\n" + "="*50)
     print("STREAMING COMPLETE")
+    print("="*50)
+
+    yield ("done", full_output)
+
+
+# --------------------
+# STAGED WORKFLOW FUNCTIONS
+# --------------------
+# These functions support the human-in-the-loop checkpoint flow.
+# Each stage is a generator that yields results for the UI to display.
+
+def run_stage1_refinement(user_input: str):
+    """
+    Stage 1: Refine the problem statement.
+
+    Makes vague inputs more specific and surfaces initial assumptions.
+
+    Yields:
+        ("refinement", {
+            "refined_statement": str,
+            "improvements": list[str],
+            "soft_guesses": list[str]
+        })
+    """
+    print("\n" + "#"*60)
+    print("STAGE 1: REFINEMENT")
+    print("#"*60)
+
+    result = run_refinement(user_input, llm)
+    yield ("refinement", result)
+
+
+def run_stage2_classification(refined_input: str):
+    """
+    Stage 2: Classify the problem.
+
+    Determines which specialist agent to route to.
+
+    Yields:
+        ("classification", {
+            "classification": str,
+            "reasoning": str,
+            "alternatives": list[str]
+        })
+    """
+    print("\n" + "#"*60)
+    print("STAGE 2: CLASSIFICATION")
+    print("#"*60)
+
+    classification, reasoning, alternatives = run_coordinator(refined_input, llm)
+    yield ("classification", {
+        "classification": classification,
+        "reasoning": reasoning,
+        "alternatives": alternatives
+    })
+
+
+def run_stage3_soft_guesses(refined_input: str, classification: str):
+    """
+    Stage 3: Extract soft guesses (assumptions).
+
+    Identifies key assumptions that could change the analysis if wrong.
+
+    Yields:
+        ("soft_guesses", list[{
+            "topic": str,
+            "assumption": str,
+            "confidence": str,
+            "reason": str
+        }])
+    """
+    print("\n" + "#"*60)
+    print("STAGE 3: SOFT GUESSES")
+    print("#"*60)
+
+    guesses = extract_soft_guesses(refined_input, classification, llm)
+    yield ("soft_guesses", guesses)
+
+
+def run_stage4_specialist(refined_input: str, classification: str, confirmed_guesses: list = None):
+    """
+    Stage 4: Run specialist agent with streaming.
+
+    Incorporates confirmed guesses into the specialist context.
+
+    Args:
+        refined_input: The refined problem statement
+        classification: Which specialist to use
+        confirmed_guesses: List of user-confirmed assumptions to inject
+
+    Yields:
+        ("token", str) - streaming tokens
+        ("done", str) - full output when complete
+    """
+    print("\n" + "#"*60)
+    print("STAGE 4: SPECIALIST")
+    print("#"*60)
+
+    # Build context with confirmed guesses
+    context = refined_input
+    if confirmed_guesses:
+        guesses_text = "\n".join([
+            f"- {g['topic']}: {g['assumption']} (Confirmed)"
+            for g in confirmed_guesses
+        ])
+        context = f"""{refined_input}
+
+## Confirmed Assumptions
+The following have been validated with the user:
+{guesses_text}"""
+
+    print(f"Context with guesses:\n{context[:200]}...")
+
+    # Map classification to stream function
+    stream_functions = {
+        "prioritization": stream_prioritization,
+        "problem_space": stream_problem_space,
+        "context_mapping": stream_context_mapping,
+        "constraints": stream_constraints,
+        "solution_validation": stream_solution_validation,
+    }
+
+    stream_fn = stream_functions.get(classification, stream_problem_space)
+
+    full_output = ""
+    for token in stream_fn(context, llm_streaming):
+        full_output += token
+        yield ("token", token)
+
+    # Validate output quality
+    validate_agent_output(full_output)
+
+    print("\n" + "="*50)
+    print("SPECIALIST STREAMING COMPLETE")
     print("="*50)
 
     yield ("done", full_output)

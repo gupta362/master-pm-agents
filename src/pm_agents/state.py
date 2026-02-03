@@ -17,3 +17,9 @@ class State(TypedDict):
     # New fields for generative discovery behavior
     soft_guesses: list               # [{"guess": "...", "confidence": "...", "validation_question": "..."}]
     validation_questions: list       # [{"question": "...", "priority": "...", "context": "..."}]
+
+    # Checkpoint fields for human-in-the-loop flow
+    refined_input: str               # Problem after refinement
+    refinement_suggestions: str      # What coordinator improved
+    classification_alternatives: list  # Other options that could fit
+    confirmed_guesses: list          # User-validated assumptions

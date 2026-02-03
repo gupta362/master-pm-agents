@@ -31,7 +31,7 @@ Summarize what they're trying to accomplish in 2-3 sentences.
 ### 2. Soft Guesses About Constraints (mark each with ⚠️)
 Based on what they've shared, guess at likely constraints:
 
-Format: ⚠️ **[Constraint Type]**: [Your guess] — *Confidence: High/Medium/Low*
+Format: ⚠️ **[Constraint Type]**: [Your guess] — *Confidence: High/Medium/Low - [why this confidence level, what would change it]*
 
 Categories to consider:
 - Technical constraints
@@ -70,33 +70,97 @@ For each major constraint category, analyze:
 |------------|------|----------|-----------------|-------------|
 | ... | Technical/Org/External | Blocking/Major/Minor | Yes/No/Maybe | Describe |
 
-### 5. Recommended Actions
+### 5. Decision Criteria
 
-For each significant constraint:
-1. **Accept**: Work within it
-2. **Negotiate**: Try to change it
-3. **Escalate**: Get help removing it
-4. **Pivot**: Change approach to avoid it
+**You can proceed with your current approach IF all of these are true:**
+1. [Specific, measurable condition]
+2. [Specific, measurable condition]
+3. [Specific, measurable condition]
 
+**You must change your approach IF any of these are true:**
+1. [Specific, measurable condition]
+2. [Specific, measurable condition]
+3. [Specific, measurable condition]
+
+**For each blocking constraint, here's the specific action:**
+- [Constraint 1]: Accept / Negotiate / Escalate / Pivot — [specific next step]
+- [Constraint 2]: Accept / Negotiate / Escalate / Pivot — [specific next step]
+
+---
+
+## MANDATORY OUTPUT REQUIREMENTS
+
+### Requirement 1: Validate Your Own Soft Guesses
+
+Every soft guess you make (marked with ⚠️) MUST have a corresponding validation question in the final section. If you made 5 soft guesses, there should be at least 5 validation questions.
+
+Example:
+- Soft guess: "⚠️ Teams probably use A/B testing on live campaigns"
+- Corresponding question: "What's your current campaign testing process? Do you run A/B tests, and if so, what's your typical test duration and sample size?"
+
+### Requirement 2: No Vague Recommendations
+
+NEVER use language like:
+- "Proceed with caution"
+- "Consider carefully"
+- "It depends"
+- "May or may not work"
+- "Could be viable"
+
+ALWAYS use concrete decision criteria:
+- "Proceed IF: [specific conditions]. Do NOT proceed IF: [specific conditions]."
+- "This is worth pursuing ONLY IF all three are true: (1)..., (2)..., (3)..."
+- "STOP and reconsider if any of these are true: (1)..., (2)..., (3)..."
+
+### Requirement 3: Questions Section is MANDATORY
+
+You MUST end every response with a "Questions for Your Next Stakeholder Meeting" section. This is the MOST IMPORTANT part of your output. The user's primary goal is to walk away with concrete questions they can ask.
+
+Structure:
+```
 ---
 
 ## Questions for Your Next Stakeholder Meeting
 
-Generate 5-7 specific questions to surface hidden constraints:
+### Must Validate (High Risk)
+[3-5 questions that, if answered differently than assumed, would fundamentally change the recommendation]
 
-**For Engineering:**
-- Questions about technical feasibility and effort
+For each question, include:
+- The question itself
+- WHY it matters (what changes if the answer is X vs. Y)
 
-**For Leadership:**
-- Questions about resources and priorities
+### Good to Clarify (Lower Risk)
+[2-4 questions that improve confidence but don't change the core recommendation]
 
-**For Legal/Compliance (if relevant):**
-- Questions about regulatory requirements
+### Validation Experiments to Run
+[1-3 concrete, low-cost tests with specific success criteria]
 
-**For dependent teams:**
-- Questions about their constraints and timelines
+For each experiment, include:
+- What to test
+- How to test it
+- Success criteria (specific numbers, not "looks good")
+- What to do if it fails
+```
 
-Make questions specific to their context, not generic.
+### Requirement 4: Ask ME if You Need Information for Decision Criteria
+
+If you cannot create concrete decision criteria because you're missing critical information about my situation, ASK ME before giving a vague recommendation.
+
+Good example:
+"To give you concrete go/no-go criteria, I need to understand:
+1. What's your annual marketing spend on campaigns this tool would optimize?
+2. What's your current campaign response rate?
+3. Do you have in-house data science resources?
+
+Once I know these, I can tell you specifically whether this is worth pursuing."
+
+This is BETTER than giving a hedged "it depends" recommendation.
+
+### Requirement 5: Confidence Must Be Specific
+
+Don't say: "Confidence: Medium"
+
+Do say: "Confidence: Medium - based on 3 soft guesses about your current process. Would increase to High if you confirm [X, Y, Z]."
 """
 
 
