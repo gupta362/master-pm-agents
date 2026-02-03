@@ -43,75 +43,119 @@ The system automatically detects which type of problem the user is facing and ro
 
 ## Architecture Diagram
 
+### Human-in-the-Loop Staged Workflow
+
+The system implements a 4-stage workflow with user checkpoints, allowing validation at each step:
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              USER INTERFACE                                  │
+│                            Streamlit Chat UI (app.py)                        │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     Streamlit Chat UI (app.py)                       │   │
-│  │  - Chat input for problem statements                                 │   │
-│  │  - Displays coordinator classification in info box                   │   │
-│  │  - Streams specialist agent response in real-time                    │   │
+│  │                         VIEW ROUTING                                 │   │
+│  │                                                                      │   │
+│  │   current_view = "chat"              → Main workflow (below)         │   │
+│  │                 | "doc_prioritization" → Agent documentation page    │   │
+│  │                 | "doc_problem_space"  → Agent documentation page    │   │
+│  │                 | "doc_context_mapping"→ Agent documentation page    │   │
+│  │                 | "doc_constraints"    → Agent documentation page    │   │
+│  │                 | "doc_solution_validation" → Agent documentation    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                      │
+│                              (when view = "chat")                           │
+│                                      ▼                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                      WORKFLOW STAGES                                 │   │
+│  │                                                                      │   │
+│  │   workflow_stage = "input"         → Chat input collection           │   │
+│  │                  | "refinement"    → Checkpoint 1: Review refinement │   │
+│  │                  | "classification"→ Checkpoint 2: Confirm routing   │   │
+│  │                  | "soft_guesses"  → Checkpoint 3: Validate guesses  │   │
+│  │                  | "streaming"     → Stream specialist output        │   │
+│  │                  | "complete"      → Show results + start new        │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           LANGGRAPH WORKFLOW                                 │
-│                          (src/pm_agents/workflow.py)                         │
+│                        4-STAGE WORKFLOW FLOW                                 │
 │                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                              STATE                                   │   │
-│  │  {                                                                   │   │
-│  │    user_input: str,              # Original problem                  │   │
-│  │    classification: str,          # One of 5 categories               │   │
-│  │    classification_reasoning: str, # Why this classification          │   │
-│  │    agent_output: str,            # Final specialist response         │   │
-│  │    soft_guesses: list,           # Agent's educated guesses          │   │
-│  │    validation_questions: list    # Questions for stakeholders        │   │
-│  │  }                                                                   │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                      │
-│                                      ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                      COORDINATOR NODE                                │   │
-│  │                   (src/pm_agents/coordinator.py)                     │   │
-│  │                                                                      │   │
-│  │  - Receives user_input                                               │   │
-│  │  - Calls LLM with COORDINATOR_PROMPT (5 categories)                  │   │
-│  │  - Parses response to extract classification + reasoning             │   │
-│  │  - Updates state with classification info                            │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                      │
-│                          ┌───────────┴───────────┐                          │
-│                          │   CONDITIONAL ROUTER   │                          │
-│                          │  route_to_specialist() │                          │
-│                          └───────────┬───────────┘                          │
-│                                      │                                      │
-│       ┌──────────┬──────────┬────────┼────────┬──────────┬──────────┐       │
-│       │          │          │        │        │          │          │       │
-│       ▼          ▼          ▼        │        ▼          ▼          ▼       │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ │ ┌─────────┐ ┌─────────┐              │
-│  │PRIORITI-│ │PROBLEM  │ │CONTEXT  │ │ │CONSTR-  │ │SOLUTION │              │
-│  │ZATION   │ │SPACE    │ │MAPPING  │ │ │AINTS    │ │VALID.   │              │
-│  │         │ │         │ │         │ │ │         │ │         │              │
-│  │ - RICE  │ │ - Exist?│ │ - Domain│ │ │ - Tech  │ │ - Value │              │
-│  │ - MoSCoW│ │ - Matter│ │ - Stake-│ │ │ - Org   │ │ - Usab. │              │
-│  │ - Value │ │ - Soft  │ │   holder│ │ │ - Extern│ │ - Feas. │              │
-│  │   /Efft │ │   guesses│ │ - Learn │ │ │ - Sever-│ │ - Viab. │              │
-│  │ - Tables│ │ - ⚠️ flag│ │   road- │ │ │   ity   │ │ - 🔴🟡🟢│              │
-│  │         │ │         │ │   map   │ │ │   matrix│ │         │              │
-│  └─────────┘ └─────────┘ └─────────┘ │ └─────────┘ └─────────┘              │
-│       │          │          │        │        │          │                  │
-│       └──────────┴──────────┴────────┼────────┴──────────┘                  │
-│                                      │                                      │
-│                                      ▼                                      │
-│                               ┌─────────────┐                               │
-│                               │     END     │                               │
-│                               └─────────────┘                               │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
+│   │   STAGE 1   │    │   STAGE 2   │    │   STAGE 3   │    │   STAGE 4   │  │
+│   │ REFINEMENT  │───▶│CLASSIFICATION│───▶│SOFT GUESSES │───▶│ SPECIALIST  │  │
+│   └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘  │
+│         │                  │                  │                  │          │
+│         ▼                  ▼                  ▼                  ▼          │
+│   ┌───────────┐      ┌───────────┐      ┌───────────┐      ┌───────────┐   │
+│   │CHECKPOINT │      │CHECKPOINT │      │CHECKPOINT │      │  STREAM   │   │
+│   │  User     │      │  User     │      │  User     │      │  Output   │   │
+│   │  reviews  │      │  confirms │      │  validates│      │  with     │   │
+│   │  & edits  │      │  or       │      │  assump-  │      │  context  │   │
+│   │  refined  │      │  overrides│      │  tions    │      │           │   │
+│   │  problem  │      │  routing  │      │           │      │           │   │
+│   └───────────┘      └───────────┘      └───────────┘      └───────────┘   │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           BACKEND WORKFLOW                                   │
+│                          (src/pm_agents/workflow.py)                         │
+│                                                                             │
+│  Stage 1: run_stage1_refinement(user_input)                                 │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  REFINEMENT (coordinator.py)                                        │   │
+│  │  - Makes vague inputs specific and concrete                         │   │
+│  │  - Surfaces implicit assumptions                                    │   │
+│  │  - Returns: refined_statement, improvements, soft_guesses           │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                      │
+│                                      ▼                                      │
+│  Stage 2: run_stage2_classification(refined_input)                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  CLASSIFICATION (coordinator.py)                                    │   │
+│  │  - Classifies into 1 of 5 categories                                │   │
+│  │  - Explains reasoning                                               │   │
+│  │  - Suggests alternatives that could also fit                        │   │
+│  │  - Returns: classification, reasoning, alternatives                 │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                      │
+│                                      ▼                                      │
+│  Stage 3: run_stage3_soft_guesses(refined_input, classification)            │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  SOFT GUESSES EXTRACTION (coordinator.py)                           │   │
+│  │  - Identifies 3-5 key assumptions                                   │   │
+│  │  - Rates confidence (High/Medium/Low)                               │   │
+│  │  - Returns: list of {topic, assumption, confidence, reason}         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                      │
+│                                      ▼                                      │
+│  Stage 4: run_stage4_specialist(refined_input, classification, guesses)     │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  SPECIALIST AGENT (agents/*.py)                                     │   │
+│  │  - Incorporates confirmed assumptions into context                  │   │
+│  │  - Streams analysis token-by-token                                  │   │
+│  │  - Yields: ("token", str) → ("done", full_output)                   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                      │
+│       ┌──────────┬──────────┬────────┼────────┬──────────┬──────────┐       │
+│       ▼          ▼          ▼        │        ▼          ▼          │       │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ │ ┌─────────┐ ┌─────────┐      │       │
+│  │PRIORITI-│ │PROBLEM  │ │CONTEXT  │ │ │CONSTR-  │ │SOLUTION │      │       │
+│  │ZATION   │ │SPACE    │ │MAPPING  │ │ │AINTS    │ │VALID.   │      │       │
+│  │         │ │         │ │         │ │ │         │ │         │      │       │
+│  │ - RICE  │ │ - Exist?│ │ - Domain│ │ │ - Tech  │ │ - Value │      │       │
+│  │ - MoSCoW│ │ - Matter│ │ - Stake-│ │ │ - Org   │ │ - Usab. │      │       │
+│  │ - Value │ │ - Soft  │ │   holder│ │ │ - Extern│ │ - Feas. │      │       │
+│  │   /Efft │ │   guesses│ │ - Learn │ │ │ - Sever-│ │ - Viab. │      │       │
+│  │ - Tables│ │ - ⚠️ flag│ │   road- │ │ │   ity   │ │ - 🔴🟡🟢│      │       │
+│  │         │ │         │ │   map   │ │ │   matrix│ │         │      │       │
+│  └─────────┘ └─────────┘ └─────────┘ │ └─────────┘ └─────────┘      │       │
+│                                      │                              │       │
+└──────────────────────────────────────┼──────────────────────────────┘       │
+                                       │                                      │
+                                       ▼                                      │
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              LLM LAYER                                       │
 │                                                                             │
@@ -120,8 +164,8 @@ The system automatically detects which type of problem the user is facing and ro
 │  │                        via LangChain Anthropic                       │   │
 │  │                                                                      │   │
 │  │  Two instances:                                                      │   │
-│  │  - llm: Regular calls (coordinator, non-streaming specialist)        │   │
-│  │  - llm_streaming: Token-by-token streaming for UI                    │   │
+│  │  - llm: Regular calls (refinement, classification, soft guesses)     │   │
+│  │  - llm_streaming: Token-by-token streaming for specialist output     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -130,53 +174,107 @@ The system automatically detects which type of problem the user is facing and ro
 
 ## System Flow
 
-### Standard Flow (Non-Streaming)
+### Human-in-the-Loop Flow (Recommended)
+
+The staged workflow gives users control at each checkpoint:
 
 ```
 1. User Input
    └── "I think users struggle with onboarding, but I'm not sure if it's real..."
-
-2. Coordinator Agent
-   ├── Receives: user_input
+       │
+       ▼
+2. STAGE 1: Refinement (run_stage1_refinement)
+   ├── Calls: LLM with REFINEMENT_PROMPT
+   ├── Returns: {
+   │     refined_statement: "Validate whether enterprise users (100+ seats)...",
+   │     improvements: ["Made user segment specific", "Added frequency"],
+   │     soft_guesses: ["Target User: Enterprise customers — Confidence: Medium"]
+   │   }
+   │
+   ▼ [CHECKPOINT 1: User reviews/edits refined statement]
+       │
+       ▼
+3. STAGE 2: Classification (run_stage2_classification)
    ├── Calls: LLM with COORDINATOR_PROMPT
-   ├── Parses: CLASSIFICATION + REASONING from response
+   ├── Returns: {
+   │     classification: "problem_space",
+   │     reasoning: "User is uncertain if the problem exists...",
+   │     alternatives: ["context_mapping"]  # Other options that could fit
+   │   }
+   │
+   ▼ [CHECKPOINT 2: User confirms or overrides classification]
+       │
+       ▼
+4. STAGE 3: Soft Guesses (run_stage3_soft_guesses)
+   ├── Calls: LLM with SOFT_GUESSES_PROMPT
+   ├── Returns: [
+   │     {topic: "Target User", assumption: "Enterprise customers",
+   │      confidence: "Medium", reason: "Not explicitly stated"},
+   │     {topic: "Severity", assumption: "Blocking issue",
+   │      confidence: "Low", reason: "Could be minor annoyance"},
+   │     ...
+   │   ]
+   │
+   ▼ [CHECKPOINT 3: User validates/corrects each assumption]
+       │
+       ▼
+5. STAGE 4: Specialist (run_stage4_specialist)
+   ├── Builds context: refined_input + confirmed_guesses
+   ├── Streams: problem_space agent output token-by-token
+   ├── YIELDS: ("token", "##") → ("token", " Problem") → ...
+   └── YIELDS: ("done", full_output)
+       │
+       ▼
+6. Complete
+   └── User sees full analysis with their confirmed context baked in
+```
+
+### Checkpoint Details
+
+| Checkpoint | What User Can Do | Why It Matters |
+|------------|------------------|----------------|
+| **1. Refinement** | Edit the refined problem statement | Ensures the system understood correctly |
+| **2. Classification** | Confirm or select different agent | User may know better which lens to use |
+| **3. Soft Guesses** | Mark assumptions correct/incorrect, provide corrections | Prevents analysis based on wrong assumptions |
+
+### Legacy Flow (Non-Streaming, No Checkpoints)
+
+For programmatic use without user interaction:
+
+```
+1. User Input → run(user_input)
+
+2. Coordinator classifies
    └── Returns: classification="problem_space", reasoning="..."
 
-3. Router
-   └── Routes to: problem_space_agent (based on classification)
+3. Router selects specialist
 
-4. Problem Space Agent
-   ├── Receives: user_input
-   ├── Calls: LLM with PROBLEM_SPACE_PROMPT
-   └── Returns: Analysis with soft guesses (⚠️) + validation questions
+4. Specialist agent runs
+   └── Returns: Full analysis
 
 5. Final State
    └── {
          user_input: "I think users struggle...",
          classification: "problem_space",
-         classification_reasoning: "User is uncertain if the problem exists...",
-         agent_output: "## Problem Statement Reframe\n\n...",
-         soft_guesses: [],
-         validation_questions: []
+         classification_reasoning: "User is uncertain...",
+         agent_output: "## Problem Statement Reframe\n\n..."
        }
 ```
 
-### Streaming Flow (For UI)
+### Streaming Flow (Legacy, No Checkpoints)
 
 ```
 1. User Input → run_streaming(user_input)
 
 2. Coordinator runs (non-streaming)
-   └── YIELDS: ("coordinator", {classification, reasoning})
+   └── YIELDS: ("coordinator", {classification, reasoning, alternatives})
 
-3. UI displays classification in info box
+3. UI displays classification
 
 4. Specialist agent streams
    └── YIELDS: ("token", "Each") → ("token", " token") → ...
 
-5. UI updates in real-time with each token
-
-6. Streaming complete
+5. Complete
    └── YIELDS: ("done", full_output)
 ```
 
@@ -190,23 +288,64 @@ The workflow uses a TypedDict to pass state between nodes:
 # src/pm_agents/state.py
 
 class State(TypedDict):
+    # Core fields
     user_input: str                  # Original problem statement from user
     classification: str              # One of: prioritization, problem_space,
                                      #         context_mapping, constraints,
                                      #         solution_validation
     classification_reasoning: str    # 2-3 sentence explanation
     agent_output: str                # Full response from specialist agent
+
+    # Generative behavior fields
     soft_guesses: list               # [{"guess": "...", "confidence": "...",
                                      #   "validation_question": "..."}]
     validation_questions: list       # [{"question": "...", "priority": "...",
                                      #   "context": "..."}]
+
+    # Human-in-the-loop checkpoint fields
+    refined_input: str               # Problem after refinement stage
+    refinement_suggestions: str      # What coordinator improved
+    classification_alternatives: list  # Other categories that could fit
+    confirmed_guesses: list          # User-validated assumptions
 ```
 
-### State Flow Through Nodes
+### UI Session State (app.py)
+
+The Streamlit UI maintains additional state for the multi-stage workflow:
+
+```python
+# View routing
+current_view: str          # "chat" | "doc_<agent_name>"
+
+# Workflow progression
+workflow_stage: str        # "input" | "refinement" | "classification" |
+                           # "soft_guesses" | "streaming" | "complete"
+
+# Data from each stage
+original_input: str        # User's raw input
+refinement_data: dict      # {refined_statement, improvements, soft_guesses}
+refined_input: str         # Edited refined statement
+classification_data: dict  # {classification, reasoning, alternatives}
+soft_guesses_data: list    # [{topic, assumption, confidence, reason}, ...]
+confirmed_guesses: list    # User-validated version of soft_guesses_data
+final_output: str          # Specialist agent's full response
+messages: list             # Chat history for display
+```
+
+### State Flow Through Stages
+
+| Stage | Function | Input | Output |
+|-------|----------|-------|--------|
+| 1. Refinement | `run_stage1_refinement` | user_input | refined_statement, improvements, soft_guesses |
+| 2. Classification | `run_stage2_classification` | refined_input | classification, reasoning, alternatives |
+| 3. Soft Guesses | `run_stage3_soft_guesses` | refined_input, classification | list of assumptions |
+| 4. Specialist | `run_stage4_specialist` | refined_input, classification, confirmed_guesses | streaming tokens → full output |
+
+### State Flow Through Nodes (Legacy Graph)
 
 | Node | Reads | Writes |
 |------|-------|--------|
-| coordinator_node | user_input | classification, classification_reasoning |
+| coordinator_node | user_input | classification, classification_reasoning, classification_alternatives |
 | prioritization_agent_node | user_input | agent_output |
 | problem_space_agent_node | user_input | agent_output |
 | context_mapping_agent_node | user_input | agent_output |
@@ -221,11 +360,40 @@ class State(TypedDict):
 
 ### Coordinator Agent
 
-**Purpose**: Classify the problem type into one of 5 categories and explain the reasoning transparently to the user.
+**Purpose**: The coordinator handles three key functions:
+1. **Refinement** - Make vague problem statements specific and concrete
+2. **Classification** - Classify the problem into one of 5 categories
+3. **Soft Guesses Extraction** - Surface assumptions for user validation
 
 **Location**: `src/pm_agents/coordinator.py`
 
-#### System Prompt
+#### Refinement Prompt
+
+```
+You are a PM coach helping refine problem statements.
+
+Take the user's input and:
+1. Make it more specific and concrete
+2. Identify vague terms that need clarification
+3. Surface implicit assumptions
+
+## Output Format
+REFINED_STATEMENT: [2-3 sentence specific version]
+
+IMPROVEMENTS_MADE:
+- [What you made more specific]
+- [What assumptions you surfaced]
+
+SOFT_GUESSES:
+- [Topic]: [What you assumed] — Confidence: [High/Medium/Low]
+
+## Guidelines
+- Keep it actionable and testable
+- Focus on WHO, WHAT pain, HOW OFTEN
+- If already specific, make minimal changes
+```
+
+#### Classification Prompt
 
 ```
 You are a PM coach coordinator. Your job is to:
@@ -263,6 +431,24 @@ Examples: "Want to build X. Is this a good idea?"
 CLASSIFICATION: [prioritization, problem_space, context_mapping, constraints,
                  or solution_validation]
 REASONING: [2-3 sentences explaining why this category fits]
+ALTERNATIVES: [Comma-separated list of other categories that could partially fit]
+```
+
+#### Soft Guesses Extraction Prompt
+
+```
+Identify 3-5 assumptions that would significantly change the analysis if wrong.
+
+## Output Format
+For each assumption, output on a single line:
+- [Topic]: [What we're assuming] — Confidence: [High/Medium/Low] — [Brief reason]
+
+## Focus On
+- Who experiences this problem
+- How severe/frequent it is
+- What the current state looks like
+- Why they're asking now
+- What success looks like
 ```
 
 #### Classification Logic
@@ -277,11 +463,10 @@ REASONING: [2-3 sentences explaining why this category fits]
 
 #### Response Parsing
 
-The coordinator's response is parsed using string matching:
+The coordinator's classification response is parsed to extract classification, reasoning, and alternatives:
 
 ```python
-def parse_response(response_text: str) -> tuple[str, str]:
-    # Valid classifications (order matters for matching)
+def parse_response(response_text: str) -> tuple[str, str, list]:
     valid_classifications = [
         "solution_validation",  # Check longer names first
         "context_mapping",
@@ -292,6 +477,7 @@ def parse_response(response_text: str) -> tuple[str, str]:
 
     classification = "problem_space"  # default fallback
     reasoning = ""
+    alternatives = []
 
     lines = response_text.strip().split("\n")
     for line in lines:
@@ -303,11 +489,33 @@ def parse_response(response_text: str) -> tuple[str, str]:
                     break
         elif line.upper().startswith("REASONING:"):
             reasoning = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("ALTERNATIVES:"):
+            alt_text = line.split(":", 1)[1].strip().lower()
+            if alt_text and alt_text != "none":
+                for alt in alt_text.split(","):
+                    for valid in valid_classifications:
+                        if valid in alt.strip() and valid != classification:
+                            alternatives.append(valid)
 
-    return classification, reasoning
+    return classification, reasoning, alternatives
 ```
 
 **Why "problem_space" is the default**: If parsing fails or the classification is ambiguous, problem_space is safer—it encourages validation before commitment.
+
+#### Coordinator Functions
+
+```python
+# Classification (returns alternatives for user override)
+classification, reasoning, alternatives = run_coordinator(user_input, llm)
+
+# Refinement (makes vague inputs specific)
+result = run_refinement(user_input, llm)
+# result = {refined_statement, improvements, soft_guesses}
+
+# Soft guesses extraction (surfaces assumptions)
+guesses = extract_soft_guesses(refined_input, classification, llm)
+# guesses = [{topic, assumption, confidence, reason}, ...]
+```
 
 ---
 
@@ -462,18 +670,60 @@ master-pm-agents/
 ### Public API (`pm_agents`)
 
 ```python
-from pm_agents import run, run_streaming, State
+from pm_agents import (
+    # Legacy (no checkpoints)
+    run,
+    run_streaming,
+    State,
+    # Staged workflow (with checkpoints)
+    run_stage1_refinement,
+    run_stage2_classification,
+    run_stage3_soft_guesses,
+    run_stage4_specialist,
+)
+
+# ===== STAGED WORKFLOW (Recommended for UIs) =====
+
+# Stage 1: Refinement
+for event_type, data in run_stage1_refinement("I think users struggle with X"):
+    if event_type == "refinement":
+        print(f"Refined: {data['refined_statement']}")
+        print(f"Improvements: {data['improvements']}")
+        # → User reviews and can edit
+
+# Stage 2: Classification
+for event_type, data in run_stage2_classification(refined_input):
+    if event_type == "classification":
+        print(f"Classification: {data['classification']}")
+        print(f"Alternatives: {data['alternatives']}")
+        # → User confirms or overrides
+
+# Stage 3: Soft Guesses
+for event_type, data in run_stage3_soft_guesses(refined_input, classification):
+    if event_type == "soft_guesses":
+        for guess in data:
+            print(f"- {guess['topic']}: {guess['assumption']} ({guess['confidence']})")
+        # → User validates each assumption
+
+# Stage 4: Specialist (streaming)
+for event_type, data in run_stage4_specialist(refined_input, classification, confirmed_guesses):
+    if event_type == "token":
+        print(data, end="", flush=True)
+    elif event_type == "done":
+        print("\n--- Complete ---")
+
+# ===== LEGACY API (No checkpoints) =====
 
 # Run with full response
 result: State = run("Your PM problem...")
 print(result["classification"])      # One of 5 categories
 print(result["agent_output"])        # Full specialist response
 
-# Run with streaming (for UIs)
+# Run with streaming (for simple UIs)
 for event_type, data in run_streaming("Your PM problem..."):
     if event_type == "coordinator":
         print(f"Classified as: {data['classification']}")
-        print(f"Because: {data['reasoning']}")
+        print(f"Alternatives: {data['alternatives']}")
     elif event_type == "token":
         print(data, end="", flush=True)
     elif event_type == "done":
@@ -483,13 +733,29 @@ for event_type, data in run_streaming("Your PM problem..."):
 ### Coordinator Module
 
 ```python
-from pm_agents.coordinator import run_coordinator, parse_response, PROMPT
+from pm_agents.coordinator import (
+    run_coordinator,
+    run_refinement,
+    extract_soft_guesses,
+    parse_response,
+    PROMPT,
+    REFINEMENT_PROMPT,
+    SOFT_GUESSES_PROMPT,
+)
 
-# Run coordinator
-classification, reasoning = run_coordinator(user_input, llm)
+# Run classification (with alternatives)
+classification, reasoning, alternatives = run_coordinator(user_input, llm)
+
+# Run refinement
+result = run_refinement(user_input, llm)
+# result = {refined_statement, improvements, soft_guesses}
+
+# Extract soft guesses
+guesses = extract_soft_guesses(refined_input, classification, llm)
+# guesses = [{topic, assumption, confidence, reason}, ...]
 
 # Parse raw LLM response
-classification, reasoning = parse_response(response_text)
+classification, reasoning, alternatives = parse_response(response_text)
 ```
 
 ### Agent Modules
@@ -644,7 +910,7 @@ graph.add_conditional_edges(
 
 ### 6. Update Streaming Logic
 
-In `run_streaming()`, add to the stream_functions dict:
+In `run_streaming()` and `run_stage4_specialist()`, add to the stream_functions dict:
 
 ```python
 stream_functions = {
