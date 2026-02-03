@@ -92,6 +92,62 @@ from package_name import run, run_streaming
 - Keep coordinator logic separate from specialist agents
 - Use conditional edges for routing decisions
 
+## LLM Configuration (Critical)
+
+**Always set `max_tokens` explicitly when initializing LLM clients:**
+
+```python
+# BAD - will truncate agent outputs at ~1024 tokens
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")
+
+# GOOD - allows complete multi-section responses (agents need 4,000-7,000 tokens)
+llm = ChatAnthropic(model="claude-sonnet-4-20250514", max_tokens=8192)
+```
+
+This was a real bug: agent outputs were being cut off mid-response because the default was too low.
+
+## Agent Design: Generative Behavior
+
+Agents should be **generative** (make progress) rather than **blocking** (asking questions without providing value):
+
+**Blocking (bad):**
+> "I need more information about your users before I can help."
+
+**Generative (good):**
+> "Based on your description, I'm assuming B2B enterprise users (⚠️ soft guess). Here's my analysis... **Must Validate:** Is this actually B2B enterprise or B2C?"
+
+Pattern:
+1. Make soft guesses where info is missing (mark with ⚠️)
+2. Proceed with analysis using those guesses
+3. Include "Must Validate" section listing assumptions to verify
+
+## Extending State
+
+When adding new fields to the workflow state:
+
+```python
+# state.py - add new fields with defaults
+class State(TypedDict, total=False):
+    user_input: str
+    classification: str
+    agent_output: str
+    # New fields - use total=False so they're optional
+    soft_guesses: list[str]          # Assumptions agent made
+    validation_questions: list[str]   # Questions to verify assumptions
+```
+
+Always use `total=False` for new fields to avoid breaking existing code.
+
+## Common Pitfalls (Learned the Hard Way)
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| Output truncation | Response ends mid-sentence | Set `max_tokens=8192` on LLM |
+| Agent too vague | "It depends..." responses | Add specific frameworks and required output sections to prompt |
+| Wrong classification | Coordinator misroutes queries | Add classification alternatives, let user override |
+| Missing context | Agent guesses wrong | Add human-in-the-loop checkpoints for assumption validation |
+| Monolithic agent | Inconsistent quality | Split into specialized sub-agents with focused prompts |
+
 ## When Adding Features
 
 1. Determine if it's a new agent or modification to existing
@@ -99,6 +155,35 @@ from package_name import run, run_streaming
 3. For workflow changes: modify `workflow.py`
 4. For UI changes: modify `app.py`
 5. Update `__init__.py` exports if adding public API
+6. For new state fields: add to `state.py` with `total=False`
+
+## Output Validation
+
+Add validation to catch quality issues early:
+
+```python
+def validate_agent_output(output: str) -> bool:
+    """Check agent output meets quality requirements."""
+    issues = []
+
+    # Check required sections exist
+    required = ["Questions for Your Next Stakeholder Meeting", "Must Validate"]
+    missing = [s for s in required if s not in output]
+    if missing:
+        issues.append(f"Missing sections: {missing}")
+
+    # Check for vague language
+    vague = ["it depends", "proceed with caution", "may or may not"]
+    found = [p for p in vague if p in output.lower()]
+    if found:
+        issues.append(f"Vague language: {found}")
+
+    if issues:
+        print(f"OUTPUT WARNINGS: {issues}")
+    return len(issues) == 0
+```
+
+Call this after agent runs to surface prompt issues early.
 
 ## How to Explain Code to Me
 - Use data science analogies where helpful
