@@ -1,6 +1,6 @@
 # PM Brainstorming Assistant
 
-A multi-agent system that helps Product Managers think through problems using AI-powered specialist agents.
+A multi-agent system that helps Product Managers think through problems using AI-powered specialist agents with human-in-the-loop validation.
 
 ## What This Does
 
@@ -14,30 +14,51 @@ As a PM, you face different types of challenges that require different thinking 
 | **Constraints** | Surfacing hidden blockers and limitations | "Engineering says 'won't work' but I don't know why" |
 | **Solution Validation** | Validating if a solution idea is viable | "Want to build X. Is this a good idea?" |
 
-This tool automatically detects which type of problem you're facing and routes you to a specialist agent:
+## How It Works
+
+The system uses a **4-stage workflow with checkpoints** that keeps you in control:
 
 ```
-Your Problem → Coordinator (classifies) → Prioritization Agent
-                                        → Problem Space Agent
-                                        → Context Mapping Agent
-                                        → Constraints Agent
-                                        → Solution Validation Agent
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   STAGE 1   │     │   STAGE 2   │     │   STAGE 3   │     │   STAGE 4   │
+│ Refinement  │────▶│Classification│────▶│Soft Guesses │────▶│ Specialist  │
+└──────┬──────┘     └──────┬──────┘     └──────┬──────┘     └─────────────┘
+       │                   │                   │
+       ▼                   ▼                   ▼
+  [Checkpoint]        [Checkpoint]        [Checkpoint]
+  Review & edit       Confirm or          Validate
+  refined problem     override routing    assumptions
 ```
 
-The **Coordinator** explains its reasoning, so you understand why it chose a particular path. Then the **Specialist Agent** gives you a structured, actionable response tailored to your specific situation.
+1. **Refinement** - Makes your vague input specific and concrete. You can edit it.
+2. **Classification** - Picks the best agent. You can override if you know better.
+3. **Soft Guesses** - Surfaces assumptions. You validate what's correct/incorrect.
+4. **Specialist** - Runs analysis with your confirmed context baked in.
 
 ## Features
 
-- **Automatic problem classification** with transparent reasoning (5 categories)
-- **Prioritization Agent**: Applies frameworks like RICE, MoSCoW, Value vs Effort with markdown tables
-- **Problem Space Agent**: Validates if problems exist and matter, with soft guesses marked ⚠️
-- **Context Mapping Agent**: Maps domains, stakeholders, and organizational dynamics
-- **Constraints Agent**: Surfaces hidden technical, organizational, and external limitations
-- **Solution Validation Agent**: Validates solutions against 4 risks (value, usability, feasibility, viability)
-- **Generative behavior**: Agents make educated guesses and proceed with analysis instead of blocking
-- **Validation questions**: Every agent ends with "Questions for Your Next Stakeholder Meeting"
-- **Streamlit chat UI** with real-time streaming responses
-- **Terminal logging** for debugging (all print statements go to terminal, not UI)
+### Human-in-the-Loop Workflow
+- **3 checkpoints** where you review and validate before proceeding
+- **Editable refinement** - fix the problem statement if the AI misunderstood
+- **Override routing** - pick a different agent if you know better
+- **Assumption validation** - confirm or correct what the AI guessed about your situation
+
+### 5 Specialist Agents
+- **Prioritization**: RICE scoring, MoSCoW, Value vs Effort matrices, weighted scoring
+- **Problem Space**: Evidence analysis, severity assessment, validation experiments
+- **Context Mapping**: Stakeholder maps, domain glossaries, learning roadmaps
+- **Constraints**: Technical/org/external blockers, negotiability analysis
+- **Solution Validation**: 4-risks framework (value, usability, feasibility, viability)
+
+### In-App Documentation
+- **Full-page documentation** for each agent (click agent name in sidebar)
+- **Framework explanations** with examples, tables, and diagrams
+- **Methodology breakdowns** so you understand what the agent does
+
+### Developer Experience
+- **Streamlit chat UI** with real-time streaming
+- **Staged Python API** for building custom UIs
+- **Terminal logging** for debugging
 
 ## Setup
 
@@ -73,17 +94,43 @@ Then open http://localhost:8501 in your browser.
 ### Python API
 
 ```python
+# Staged workflow (recommended) - gives you control at each step
+from pm_agents import (
+    run_stage1_refinement,
+    run_stage2_classification,
+    run_stage3_soft_guesses,
+    run_stage4_specialist,
+)
+
+# Stage 1: Refine the problem
+for event_type, data in run_stage1_refinement("I think users struggle with X"):
+    if event_type == "refinement":
+        refined = data["refined_statement"]  # User can edit this
+
+# Stage 2: Classify
+for event_type, data in run_stage2_classification(refined):
+    if event_type == "classification":
+        classification = data["classification"]
+        alternatives = data["alternatives"]  # Other options user could pick
+
+# Stage 3: Extract assumptions
+for event_type, data in run_stage3_soft_guesses(refined, classification):
+    if event_type == "soft_guesses":
+        guesses = data  # User validates each one
+
+# Stage 4: Run specialist with confirmed context
+for event_type, data in run_stage4_specialist(refined, classification, confirmed_guesses):
+    if event_type == "token":
+        print(data, end="")  # Streaming output
+```
+
+```python
+# Legacy API (no checkpoints) - for simple integrations
 from pm_agents import run, run_streaming
 
-# Run with full response
 result = run("Help me prioritize these three features...")
-
-# Run with streaming (for UIs)
-for event_type, data in run_streaming("Help me prioritize..."):
-    if event_type == "coordinator":
-        print(f"Classification: {data['classification']}")
-    elif event_type == "token":
-        print(data, end="")
+print(result["classification"])
+print(result["agent_output"])
 ```
 
 ## Example Usage
@@ -120,21 +167,20 @@ master-pm-agents/
 ├── src/
 │   └── pm_agents/
 │       ├── __init__.py              # Public API exports
-│       ├── workflow.py              # LangGraph orchestration
-│       ├── coordinator.py           # Problem classification (5 categories)
+│       ├── workflow.py              # Staged workflow + LangGraph orchestration
+│       ├── coordinator.py           # Refinement, classification, soft guesses
 │       ├── state.py                 # State definitions
 │       └── agents/
 │           ├── __init__.py
-│           ├── prioritization.py    # Trade-offs and ranking
-│           ├── problem_space.py     # Problem validation
-│           ├── context_mapping.py   # Domain/stakeholder mapping
-│           ├── constraints.py       # Hidden limitations
-│           └── solution_validation.py  # 4-risks validation
+│           ├── prioritization.py    # RICE, MoSCoW, weighted scoring
+│           ├── problem_space.py     # Problem validation + experiments
+│           ├── context_mapping.py   # Stakeholder maps + learning roadmaps
+│           ├── constraints.py       # Constraint analysis + negotiability
+│           └── solution_validation.py  # 4-risks framework
 ├── docs/
 │   └── ARCHITECTURE.md              # Detailed system documentation
-├── app.py                           # Streamlit chat UI
+├── app.py                           # Streamlit UI with checkpoints + docs pages
 ├── pyproject.toml                   # Package config
-├── spec.md                          # Detailed specifications
 └── .env                             # Your ANTHROPIC_API_KEY
 ```
 
