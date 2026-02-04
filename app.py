@@ -29,41 +29,382 @@ st.set_page_config(
 
 
 # --------------------
+# CUSTOM CSS
+# --------------------
+
+st.markdown("""
+<style>
+    /* Main container styling */
+    .main .block-container {
+        padding-top: 2rem;
+        max-width: 1200px;
+    }
+
+    /* Progress bar styling */
+    .progress-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 0;
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .progress-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        position: relative;
+    }
+
+    .progress-step::after {
+        content: '';
+        position: absolute;
+        top: 15px;
+        left: 50%;
+        width: 100%;
+        height: 2px;
+        background: #e0e0e0;
+        z-index: -1;
+    }
+
+    .progress-step:last-child::after {
+        display: none;
+    }
+
+    .step-circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 0.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .step-circle.completed {
+        background: #10b981;
+        color: white;
+    }
+
+    .step-circle.active {
+        background: #3b82f6;
+        color: white;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+    }
+
+    .step-circle.pending {
+        background: #f3f4f6;
+        color: #9ca3af;
+        border: 2px solid #e5e7eb;
+    }
+
+    .step-label {
+        font-size: 12px;
+        color: #6b7280;
+        text-align: center;
+    }
+
+    .step-label.active {
+        color: #3b82f6;
+        font-weight: 600;
+    }
+
+    .step-label.completed {
+        color: #10b981;
+    }
+
+    /* Sidebar agent cards */
+    .agent-card {
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        border: 1px solid #e5e7eb;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+
+    .agent-card:hover {
+        border-color: #3b82f6;
+        background: #f8fafc;
+    }
+
+    .agent-card-title {
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 2px;
+    }
+
+    .agent-card-desc {
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    /* Welcome card styling */
+    .welcome-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+    }
+
+    .welcome-card h2 {
+        margin-bottom: 0.5rem;
+    }
+
+    /* Checkpoint card styling */
+    .checkpoint-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .checkpoint-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .checkpoint-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+    }
+
+    .checkpoint-icon.refine { background: #dbeafe; }
+    .checkpoint-icon.classify { background: #dcfce7; }
+    .checkpoint-icon.validate { background: #fef3c7; }
+    .checkpoint-icon.analyze { background: #f3e8ff; }
+
+    /* Status badges */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .status-badge.success {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .status-badge.info {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .status-badge.warning {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    /* Example prompts styling */
+    .example-prompt {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.5rem;
+        font-size: 14px;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .example-prompt:hover {
+        border-color: #3b82f6;
+        background: #eff6ff;
+    }
+
+    /* Hide default Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* Improve button styling */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Improve selectbox */
+    .stSelectbox > div > div {
+        border-radius: 8px;
+    }
+
+    /* Improve text area */
+    .stTextArea > div > div > textarea {
+        border-radius: 8px;
+    }
+
+    /* Improve expander */
+    .streamlit-expanderHeader {
+        font-weight: 500;
+        border-radius: 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# --------------------
+# PROGRESS INDICATOR
+# --------------------
+
+WORKFLOW_STAGES = [
+    ("input", "Start", "1"),
+    ("refinement", "Refine", "2"),
+    ("classification", "Classify", "3"),
+    ("soft_guesses", "Validate", "4"),
+    ("streaming", "Analyze", "5"),
+    ("complete", "Done", "✓"),
+]
+
+def render_progress_indicator():
+    """Render the workflow progress indicator."""
+    current_stage = st.session_state.workflow_stage
+    stage_order = [s[0] for s in WORKFLOW_STAGES]
+    current_idx = stage_order.index(current_stage) if current_stage in stage_order else 0
+
+    cols = st.columns(len(WORKFLOW_STAGES))
+
+    for i, (stage_id, label, number) in enumerate(WORKFLOW_STAGES):
+        with cols[i]:
+            if i < current_idx:
+                # Completed
+                st.markdown(f"""
+                    <div style="text-align: center;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #10b981; color: white;
+                                    display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;">
+                            ✓
+                        </div>
+                        <div style="font-size: 12px; color: #10b981; margin-top: 4px;">{label}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            elif i == current_idx:
+                # Active
+                st.markdown(f"""
+                    <div style="text-align: center;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #3b82f6; color: white;
+                                    display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;
+                                    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);">
+                            {number}
+                        </div>
+                        <div style="font-size: 12px; color: #3b82f6; font-weight: 600; margin-top: 4px;">{label}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                # Pending
+                st.markdown(f"""
+                    <div style="text-align: center;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #f3f4f6; color: #9ca3af;
+                                    display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;
+                                    border: 2px solid #e5e7eb;">
+                            {number}
+                        </div>
+                        <div style="font-size: 12px; color: #9ca3af; margin-top: 4px;">{label}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+
+# --------------------
 # SIDEBAR
 # --------------------
+
+AGENT_CARDS = [
+    {
+        "id": "prioritization",
+        "icon": "⚖️",
+        "title": "Prioritization",
+        "desc": "Trade-off decisions & competing priorities",
+        "view": "doc_prioritization",
+    },
+    {
+        "id": "problem_space",
+        "icon": "🔍",
+        "title": "Problem Space",
+        "desc": "Validate if problems exist & matter",
+        "view": "doc_problem_space",
+    },
+    {
+        "id": "context_mapping",
+        "icon": "🗺️",
+        "title": "Context Mapping",
+        "desc": "Map stakeholders & org dynamics",
+        "view": "doc_context_mapping",
+    },
+    {
+        "id": "constraints",
+        "icon": "🚧",
+        "title": "Constraints",
+        "desc": "Surface hidden blockers & limitations",
+        "view": "doc_constraints",
+    },
+    {
+        "id": "solution_validation",
+        "icon": "✅",
+        "title": "Solution Validation",
+        "desc": "Stress-test ideas before building",
+        "view": "doc_solution_validation",
+    },
+]
+
+COMING_SOON = [
+    {"icon": "👥", "title": "Stakeholder Mapping"},
+    {"icon": "📊", "title": "Competitive Analysis"},
+    {"icon": "🚀", "title": "Go-to-Market Planning"},
+]
+
 
 def render_sidebar():
     """Render sidebar with navigation buttons to agent documentation pages."""
     with st.sidebar:
-        st.header("About the Agents")
-        st.caption("Click to learn more about each agent's methodology")
+        st.markdown("### 📚 Agent Library")
+        st.caption("Learn about each agent's methodology")
 
-        if st.button("Prioritization", use_container_width=True):
-            st.session_state.current_view = "doc_prioritization"
-            st.rerun()
+        st.markdown("")  # spacing
 
-        if st.button("Problem Space", use_container_width=True):
-            st.session_state.current_view = "doc_problem_space"
-            st.rerun()
+        for agent in AGENT_CARDS:
+            col1, col2 = st.columns([1, 5])
+            with col1:
+                st.markdown(f"<span style='font-size: 24px;'>{agent['icon']}</span>", unsafe_allow_html=True)
+            with col2:
+                if st.button(
+                    agent["title"],
+                    key=f"btn_{agent['id']}",
+                    use_container_width=True,
+                    help=agent["desc"]
+                ):
+                    st.session_state.current_view = agent["view"]
+                    st.rerun()
+                st.caption(agent["desc"])
 
-        if st.button("Context Mapping", use_container_width=True):
-            st.session_state.current_view = "doc_context_mapping"
-            st.rerun()
-
-        if st.button("Constraints", use_container_width=True):
-            st.session_state.current_view = "doc_constraints"
-            st.rerun()
-
-        if st.button("Solution Validation", use_container_width=True):
-            st.session_state.current_view = "doc_solution_validation"
-            st.rerun()
+            st.markdown("")  # spacing between cards
 
         st.divider()
 
-        st.subheader("Coming Soon")
-        st.caption("🚧 Stakeholder Mapping")
-        st.caption("🚧 Competitive Analysis")
-        st.caption("🚧 Go-to-Market Planning")
+        st.markdown("### 🔮 Coming Soon")
+        for item in COMING_SOON:
+            st.markdown(f"{item['icon']} **{item['title']}**")
+            st.caption("In development")
 
 
 # --------------------
@@ -127,26 +468,63 @@ def display_chat_history():
             st.markdown(message["content"])
 
 
+EXAMPLE_PROMPTS = [
+    "Should we build feature A or B first?",
+    "I think users struggle with onboarding, but I'm not sure",
+    "Engineering says this won't work but I don't understand why",
+    "We're entering a new market and need to understand the landscape",
+]
+
+
 def show_welcome():
     """Show welcome message with usage instructions."""
-    with st.container(border=True):
-        st.markdown("### How to Use")
-        st.markdown("""
-1. **Describe your PM challenge** in the chat box below
-2. **Review the refinement** — I'll make your problem more specific
-3. **Confirm the approach** — Choose which lens to analyze through
-4. **Validate assumptions** — Correct any guesses I've made
-5. **Get your analysis** — Actionable insights with validation questions
-        """)
+    # Hero section
+    st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white; padding: 2rem; border-radius: 12px; margin-bottom: 1.5rem;">
+            <h2 style="margin: 0 0 0.5rem 0; color: white;">Welcome to PM Brainstorming</h2>
+            <p style="margin: 0; opacity: 0.9;">Your AI thinking partner for product decisions</p>
+        </div>
+    """, unsafe_allow_html=True)
 
-        st.markdown("**Example prompts:**")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("- *Should we build feature A or B first?*")
-            st.markdown("- *I think users struggle with onboarding, but I'm not sure*")
-        with col2:
-            st.markdown("- *Engineering says this won't work but I don't understand why*")
-            st.markdown("- *We're entering a new market and I need to understand the landscape*")
+    # How it works - horizontal steps
+    st.markdown("#### How it works")
+    cols = st.columns(4)
+    steps = [
+        ("1️⃣", "Describe", "Share your PM challenge"),
+        ("2️⃣", "Refine", "We clarify together"),
+        ("3️⃣", "Validate", "Confirm assumptions"),
+        ("4️⃣", "Analyze", "Get actionable insights"),
+    ]
+    for col, (num, title, desc) in zip(cols, steps):
+        with col:
+            st.markdown(f"""
+                <div style="text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; height: 100%;">
+                    <div style="font-size: 24px;">{num}</div>
+                    <div style="font-weight: 600; margin: 0.5rem 0;">{title}</div>
+                    <div style="font-size: 13px; color: #64748b;">{desc}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("")  # spacing
+
+    # Example prompts
+    st.markdown("#### Try an example")
+    col1, col2 = st.columns(2)
+    for i, prompt in enumerate(EXAMPLE_PROMPTS):
+        target_col = col1 if i % 2 == 0 else col2
+        with target_col:
+            if st.button(f"💡 {prompt}", key=f"example_{i}", use_container_width=True):
+                st.session_state.original_input = prompt
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                # Trigger refinement stage
+                with st.spinner("Refining your problem statement..."):
+                    for event_type, data in run_stage1_refinement(prompt):
+                        if event_type == "refinement":
+                            st.session_state.refinement_data = data
+                            st.session_state.refined_input = data["refined_statement"]
+                st.session_state.workflow_stage = "refinement"
+                st.rerun()
 
 
 def format_classification_name(classification: str) -> str:
@@ -836,21 +1214,37 @@ def handle_refinement_stage():
     display_chat_history()
 
     with st.chat_message("assistant"):
-        st.markdown("### Checkpoint 1: Problem Refinement")
-        st.caption("I've refined your problem statement to make it more specific. Please review and confirm.")
+        # Checkpoint header with icon
+        st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
+                <div style="width: 44px; height: 44px; border-radius: 10px; background: #dbeafe;
+                            display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                    ✏️
+                </div>
+                <div>
+                    <div style="font-size: 18px; font-weight: 600;">Problem Refinement</div>
+                    <div style="font-size: 13px; color: #6b7280;">Review and edit the refined problem statement</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        st.markdown("")  # Spacing
-
-        # Side by side comparison
+        # Side by side comparison with styled cards
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**Original:**")
+            st.markdown("""
+                <div style="font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">
+                    Original
+                </div>
+            """, unsafe_allow_html=True)
             st.info(st.session_state.original_input)
 
         with col2:
-            st.markdown("**Refined:**")
-            # Editable text area
+            st.markdown("""
+                <div style="font-size: 12px; font-weight: 600; color: #3b82f6; text-transform: uppercase; margin-bottom: 6px;">
+                    Refined (editable)
+                </div>
+            """, unsafe_allow_html=True)
             refined = st.text_area(
                 "Edit if needed:",
                 value=st.session_state.refined_input,
@@ -863,13 +1257,13 @@ def handle_refinement_stage():
 
         # Show what was improved
         if st.session_state.refinement_data.get("improvements"):
-            with st.expander("What I changed", expanded=False):
+            with st.expander("💡 What I changed", expanded=False):
                 for improvement in st.session_state.refinement_data["improvements"]:
                     st.markdown(f"- {improvement}")
 
         # Show initial soft guesses from refinement
         if st.session_state.refinement_data.get("soft_guesses"):
-            with st.expander("Initial assumptions spotted", expanded=False):
+            with st.expander("🔮 Initial assumptions spotted", expanded=False):
                 for guess in st.session_state.refinement_data["soft_guesses"]:
                     st.markdown(f"- {guess}")
 
@@ -879,7 +1273,7 @@ def handle_refinement_stage():
         col1, col2 = st.columns([1, 1])
 
         with col1:
-            if st.button("Confirm & Continue", type="primary", use_container_width=True):
+            if st.button("✓ Confirm & Continue", type="primary", use_container_width=True):
                 st.session_state.refined_input = refined
 
                 # Run classification
@@ -892,9 +1286,18 @@ def handle_refinement_stage():
                 st.rerun()
 
         with col2:
-            if st.button("Start Over", use_container_width=True):
+            if st.button("↺ Start Over", use_container_width=True):
                 reset_workflow()
                 st.rerun()
+
+
+CLASSIFICATION_ICONS = {
+    "prioritization": "⚖️",
+    "problem_space": "🔍",
+    "context_mapping": "🗺️",
+    "constraints": "🚧",
+    "solution_validation": "✅",
+}
 
 
 def handle_classification_stage():
@@ -902,21 +1305,36 @@ def handle_classification_stage():
     display_chat_history()
 
     with st.chat_message("assistant"):
-        st.markdown("### Checkpoint 2: Classification")
-        st.caption("I've classified your problem. Confirm or select a different approach.")
-
-        st.markdown("")  # Spacing
+        # Checkpoint header with icon
+        st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
+                <div style="width: 44px; height: 44px; border-radius: 10px; background: #dcfce7;
+                            display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                    🎯
+                </div>
+                <div>
+                    <div style="font-size: 18px; font-weight: 600;">Agent Selection</div>
+                    <div style="font-size: 13px; color: #6b7280;">Confirm or change the recommended approach</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         data = st.session_state.classification_data
         classification = data["classification"]
         reasoning = data["reasoning"]
         alternatives = data.get("alternatives", [])
 
-        # Show recommended classification
-        st.success(f"**Recommended:** {format_classification_name(classification)}")
-        st.markdown(f"*{reasoning}*")
-
-        st.markdown("")  # Spacing
+        # Show recommended classification with icon
+        icon = CLASSIFICATION_ICONS.get(classification, "📋")
+        st.markdown(f"""
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="font-size: 20px;">{icon}</span>
+                    <span style="font-weight: 600; color: #166534;">Recommended: {format_classification_name(classification)}</span>
+                </div>
+                <div style="color: #15803d; font-size: 14px;">{reasoning}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Build options for selectbox
         all_options = [classification] + [alt for alt in alternatives if alt != classification]
@@ -927,14 +1345,15 @@ def handle_classification_stage():
             if cat not in all_options:
                 all_options.append(cat)
 
-        # Format for display
-        option_labels = {opt: format_classification_name(opt) for opt in all_options}
+        # Format for display with icons
+        option_labels = {opt: f"{CLASSIFICATION_ICONS.get(opt, '📋')} {format_classification_name(opt)}" for opt in all_options}
 
         # Show alternatives if any
         if alternatives:
-            with st.expander("Other possible approaches", expanded=False):
+            with st.expander("🔄 Other possible approaches", expanded=False):
                 for alt in alternatives:
-                    st.markdown(f"- **{format_classification_name(alt)}**")
+                    alt_icon = CLASSIFICATION_ICONS.get(alt, "📋")
+                    st.markdown(f"- {alt_icon} **{format_classification_name(alt)}**")
 
         # Override selector
         selected = st.selectbox(
@@ -951,7 +1370,7 @@ def handle_classification_stage():
         col1, col2 = st.columns([1, 1])
 
         with col1:
-            if st.button("Confirm & Continue", type="primary", use_container_width=True):
+            if st.button("✓ Confirm & Continue", type="primary", use_container_width=True):
                 # Update classification if changed
                 st.session_state.classification_data["classification"] = selected
 
@@ -968,7 +1387,7 @@ def handle_classification_stage():
                 st.rerun()
 
         with col2:
-            if st.button("Back", use_container_width=True):
+            if st.button("← Back", use_container_width=True):
                 st.session_state.workflow_stage = "refinement"
                 st.rerun()
 
@@ -978,41 +1397,66 @@ def handle_soft_guesses_stage():
     display_chat_history()
 
     with st.chat_message("assistant"):
-        st.markdown("### Checkpoint 3: Validate Assumptions")
-        st.caption("Please confirm or correct these assumptions before I proceed with the full analysis.")
-
-        st.markdown("")  # Spacing
+        # Checkpoint header with icon
+        st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
+                <div style="width: 44px; height: 44px; border-radius: 10px; background: #fef3c7;
+                            display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                    🔮
+                </div>
+                <div>
+                    <div style="font-size: 18px; font-weight: 600;">Validate Assumptions</div>
+                    <div style="font-size: 13px; color: #6b7280;">Confirm or correct before full analysis</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         guesses = st.session_state.soft_guesses_data
 
         if not guesses:
-            st.info("No major assumptions detected. Ready to proceed!")
+            st.markdown("""
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 1rem; text-align: center;">
+                    <span style="font-size: 24px;">✨</span>
+                    <div style="font-weight: 500; color: #166534; margin-top: 0.5rem;">No major assumptions detected</div>
+                    <div style="font-size: 13px; color: #15803d;">Ready to proceed with analysis!</div>
+                </div>
+            """, unsafe_allow_html=True)
         else:
             # Create a form for each guess
             confirmed = []
 
             for i, guess in enumerate(guesses):
+                confidence = guess.get("confidence", "Medium")
+                confidence_style = {
+                    "High": ("🟢", "#dcfce7", "#166534"),
+                    "Medium": ("🟡", "#fef3c7", "#92400e"),
+                    "Low": ("🔴", "#fee2e2", "#991b1b"),
+                }.get(confidence, ("🟡", "#fef3c7", "#92400e"))
+
                 with st.container():
-                    col1, col2 = st.columns([3, 1])
+                    # Card-like container for each assumption
+                    st.markdown(f"""
+                        <div style="background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <span style="font-weight: 600;">{guess.get('topic', 'Assumption')}</span>
+                                    <span style="background: {confidence_style[1]}; color: {confidence_style[2]};
+                                                 padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">
+                                        {confidence_style[0]} {confidence}
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="margin-top: 0.5rem; color: #374151;">{guess.get('assumption', '')}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
 
+                    col1, col2 = st.columns([4, 1])
                     with col1:
-                        confidence_color = {
-                            "High": "🟢",
-                            "Medium": "🟡",
-                            "Low": "🔴"
-                        }.get(guess.get("confidence", "Medium"), "🟡")
-
-                        st.markdown(
-                            f"**{guess.get('topic', 'Assumption')}** {confidence_color}\n\n"
-                            f"{guess.get('assumption', '')}"
-                        )
-
                         if guess.get("reason"):
-                            st.caption(f"Why: {guess['reason']}")
-
+                            st.caption(f"💡 {guess['reason']}")
                     with col2:
                         is_correct = st.checkbox(
-                            "Correct?",
+                            "Correct",
                             value=True,
                             key=f"guess_{i}"
                         )
@@ -1020,7 +1464,7 @@ def handle_soft_guesses_stage():
                     # If not correct, allow correction
                     if not is_correct:
                         correction = st.text_input(
-                            "What's the correct assumption?",
+                            "What's the correct information?",
                             key=f"correction_{i}",
                             placeholder="Enter the correct information..."
                         )
@@ -1028,13 +1472,13 @@ def handle_soft_guesses_stage():
                             confirmed.append({
                                 "topic": guess.get("topic", "Correction"),
                                 "assumption": correction,
-                                "confidence": "High",  # User-confirmed
+                                "confidence": "High",
                                 "reason": "Corrected by user"
                             })
                     else:
                         confirmed.append(guess)
 
-                    st.divider()
+                    st.markdown("")  # Spacing between cards
 
             st.session_state.confirmed_guesses = confirmed
 
@@ -1044,12 +1488,12 @@ def handle_soft_guesses_stage():
         col1, col2 = st.columns([1, 1])
 
         with col1:
-            if st.button("Run Analysis", type="primary", use_container_width=True):
+            if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
                 st.session_state.workflow_stage = "streaming"
                 st.rerun()
 
         with col2:
-            if st.button("Back", use_container_width=True):
+            if st.button("← Back", use_container_width=True):
                 st.session_state.workflow_stage = "classification"
                 st.rerun()
 
@@ -1059,16 +1503,28 @@ def handle_streaming_stage():
     display_chat_history()
 
     with st.chat_message("assistant"):
-        # Show summary of confirmed context
         classification = st.session_state.classification_data["classification"]
+        icon = CLASSIFICATION_ICONS.get(classification, "📋")
 
-        st.info(
-            f"**Classification:** {format_classification_name(classification)}\n\n"
-            f"**Refined Problem:** {st.session_state.refined_input[:200]}..."
-        )
+        # Analysis header
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
+                <div style="width: 44px; height: 44px; border-radius: 10px; background: #f3e8ff;
+                            display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                    {icon}
+                </div>
+                <div>
+                    <div style="font-size: 18px; font-weight: 600;">{format_classification_name(classification)} Analysis</div>
+                    <div style="font-size: 13px; color: #6b7280;">Generating insights...</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        if st.session_state.confirmed_guesses:
-            with st.expander("Confirmed Assumptions", expanded=False):
+        # Context summary
+        with st.expander("📋 Context Summary", expanded=False):
+            st.markdown(f"**Problem:** {st.session_state.refined_input}")
+            if st.session_state.confirmed_guesses:
+                st.markdown("**Confirmed Assumptions:**")
                 for guess in st.session_state.confirmed_guesses:
                     st.markdown(f"- **{guess.get('topic', 'Assumption')}:** {guess.get('assumption', '')}")
 
@@ -1111,10 +1567,19 @@ def handle_complete_stage():
 
     st.markdown("")  # Spacing
 
-    # New problem button
-    col1, col2, col3 = st.columns([1, 1, 1])
+    # Success message and new problem button
+    st.markdown("""
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                    color: white; padding: 1.5rem; border-radius: 12px; text-align: center; margin-bottom: 1rem;">
+            <div style="font-size: 28px; margin-bottom: 0.5rem;">✓</div>
+            <div style="font-weight: 600;">Analysis Complete</div>
+            <div style="opacity: 0.9; font-size: 14px;">Your insights are ready above</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("Start New Problem", type="primary", use_container_width=True):
+        if st.button("🆕 Start New Problem", type="primary", use_container_width=True):
             reset_workflow()
             st.rerun()
 
@@ -1139,10 +1604,22 @@ elif view == "doc_solution_validation":
 else:
     # Main chat workflow - render sidebar and header only for chat view
     render_sidebar()
-    st.title("PM Brainstorming Assistant")
+
+    # Header with title
+    st.markdown("""
+        <div style="margin-bottom: 0.5rem;">
+            <span style="font-size: 28px; font-weight: 700;">PM Brainstorming Assistant</span>
+        </div>
+    """, unsafe_allow_html=True)
     st.caption("A thinking partner for prioritization decisions and discovery challenges")
 
     stage = st.session_state.workflow_stage
+
+    # Show progress indicator when workflow has started
+    if stage != "input":
+        st.markdown("")  # spacing
+        render_progress_indicator()
+        st.markdown("")  # spacing
 
     if stage == "input":
         handle_input_stage()
