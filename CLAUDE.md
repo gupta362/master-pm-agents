@@ -31,16 +31,23 @@ Building a multi-agent PM brainstorming system using LangGraph. I'm a data scien
 ## Project Structure
 
 ```
-project-name/
+master-pm-agents/
 ├── src/
-│   └── package_name/
+│   └── pm_agents/
 │       ├── __init__.py       # Public API exports
-│       ├── workflow.py       # Main orchestration logic
+│       ├── workflow.py       # Main orchestration + staged workflow functions
+│       ├── coordinator.py    # Classification, refinement, soft guesses
 │       ├── state.py          # State/data definitions
-│       └── agents/           # Subpackage for agents
+│       └── agents/           # Specialist agents
 │           ├── __init__.py
-│           └── agent_name.py
-├── app.py                    # UI/CLI entry point (root level)
+│           ├── prioritization.py
+│           ├── problem_space.py
+│           ├── context_mapping.py
+│           ├── constraints.py
+│           └── solution_validation.py
+├── docs/
+│   └── ARCHITECTURE.md       # Detailed system documentation
+├── app.py                    # Streamlit UI with staged workflow
 ├── pyproject.toml            # Package config and dependencies
 ├── README.md
 ├── CLAUDE.md
@@ -77,9 +84,19 @@ uv run streamlit run app.py
 
 # Run tests (when added)
 uv run pytest
+```
 
-# Import from the package
-from package_name import run, run_streaming
+```python
+# Import from the package - staged workflow (recommended)
+from pm_agents import (
+    run_stage1_refinement,
+    run_stage2_classification,
+    run_stage3_soft_guesses,
+    run_stage4_specialist,
+)
+
+# Import from the package - legacy (no checkpoints)
+from pm_agents import run, run_streaming
 ```
 
 ## LangGraph Patterns
@@ -92,13 +109,37 @@ from package_name import run, run_streaming
 - Keep coordinator logic separate from specialist agents
 - Use conditional edges for routing decisions
 
+## Human-in-the-Loop Workflow
+
+The system uses a 4-stage workflow with user checkpoints:
+
+```
+Stage 1: Refinement     → User reviews/edits refined problem
+Stage 2: Classification → User confirms or overrides agent routing
+Stage 3: Soft Guesses   → User validates key assumptions
+Stage 4: Specialist     → Stream analysis with confirmed context
+```
+
+Each stage is a generator function that yields results for the UI to display.
+The workflow state persists across stages, allowing users to go back.
+
+## Streamlit UI Patterns
+
+- **View routing**: `current_view` controls chat vs documentation pages
+- **Workflow stages**: `workflow_stage` tracks progress through checkpoints
+- **Session state**: All workflow data stored in `st.session_state`
+- **Documentation pages**: Full-page docs for each agent (not just tooltips)
+
 ## When Adding Features
 
 1. Determine if it's a new agent or modification to existing
 2. For new agents: create a new file in `agents/`, export in `__init__.py`
 3. For workflow changes: modify `workflow.py`
-4. For UI changes: modify `app.py`
-5. Update `__init__.py` exports if adding public API
+4. For coordinator changes (refinement, classification, soft guesses): modify `coordinator.py`
+5. For UI changes: modify `app.py`
+6. For new documentation pages: add `show_doc_<agent>()` function in `app.py`
+7. Update `__init__.py` exports if adding public API
+8. Update `docs/ARCHITECTURE.md` for significant changes
 
 ## How to Explain Code to Me
 - Use data science analogies where helpful
